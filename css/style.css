@@ -147,6 +147,10 @@ details summary { cursor: pointer; color: var(--text-2); font-size: 14px; margin
 .recog { display: flex; flex-wrap: wrap; gap: 6px 12px; width: 100%; justify-content: flex-start; text-align: left; margin-bottom: 6px; background: var(--surface); }
 .recog:hover { border-color: var(--accent); }
 .recog.used { opacity: 0.6; }
+.recog.warn { border-color: var(--neg); }
+.recog .bad, .verify .bad, p.bad { color: var(--neg); }
+.verify .ok, p.ok { color: var(--pos); }
+.verify { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
 .tag { background: var(--surface-2); border-radius: 6px; padding: 1px 8px; font-size: 12px; color: var(--text-2); }
 
 /* 记录列表 */

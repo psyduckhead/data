@@ -75,3 +75,33 @@ export function headToHead(games, me) {
   }
   return [...map.values()].map((h) => ({ ...h, losses: h.games - h.wins, winRate: h.wins / h.games }));
 }
+
+/**
+ * 验算照片识别结果：
+ * - 每场：点数合计应为 start×4，马点合计应为 0
+ * - 合计行：应等于各场按人累加（照片上的合计可能是马点累加，也可能是原始数值或其简写，任一吻合即通过）
+ */
+export function verifyRecognized(res, rules) {
+  const games = (res.games || []).map((g) => {
+    const vals = g.players.map((p) => Number(p.value) || 0);
+    const sum = vals.reduce((a, v) => a + v, 0);
+    const diff = g.kind === 'pt' ? round1(sum) : sum - totalOf(rules);
+    const pts = g.kind === 'pt' ? vals : (g.players.length === 4 ? computePts(vals, rules) : vals.map(() => NaN));
+    return { ok: g.players.length === 4 && diff === 0, diff, pts };
+  });
+  const totals = (res.totals || []).map((t) => {
+    let raw = 0, pt = 0, n = 0;
+    (res.games || []).forEach((g, k) => {
+      const i = g.players.findIndex((p) => p.name.trim() === t.name.trim());
+      if (i < 0) return;
+      n++;
+      raw += Number(g.players[i].value) || 0;
+      pt += games[k].pts[i];
+    });
+    const written = Number(t.value);
+    const candidates = [round1(pt), raw, raw / 100, raw / 1000];
+    const match = candidates.find((c) => Number.isFinite(c) && Math.abs(c - written) < 0.05);
+    return { name: t.name, written, computed: match ?? round1(pt), games: n, ok: match !== undefined };
+  });
+  return { games, totals, allOk: games.every((g) => g.ok) && totals.every((t) => t.ok) };
+}

@@ -37,18 +37,36 @@ const SCHEMA = {
         propertyOrdering: ['name', 'count'],
       },
     },
-    notes: { type: 'STRING', description: '看不清或不确定的地方，没有则为空字符串' },
+    totals: {
+      type: 'ARRAY',
+      description: '表格底部的「合计」行（每人各场累加），照原样记录；没有则为空数组',
+      items: PLAYER_VALUE,
+    },
+    money: {
+      type: 'ARRAY',
+      description: '表格底部的「钱数」行（较大的整数），照原样记录；没有则为空数组',
+      items: PLAYER_VALUE,
+    },
+    notes: { type: 'STRING', description: '看不清或不确定的地方、合计验算不一致的地方，没有则为空字符串' },
   },
-  required: ['games', 'chips', 'notes'],
-  propertyOrdering: ['games', 'chips', 'notes'],
+  required: ['games', 'chips', 'totals', 'money', 'notes'],
+  propertyOrdering: ['chips', 'games', 'totals', 'money', 'notes'],
 };
 
-const PROMPT = (known) => `这是一张日本立直麻将（四人）的手写记分表照片。请读出其中每一场的四位玩家和数值。
+const PROMPT = (known) => `这是一张日本立直麻将（四人）一天的手写记分表照片。请按下面的版式读出数据。
 
-- 每一场通常是一行或一列，四个数值对应四位玩家；玩家名一般写在表头。
-- 数值可能是「终局点数」（如 41000，或简写成 410 / 41.0 表示 41000，四人合计约 100000）——此时 kind = "score"，value 一律换算成完整点数（例如 410 → 41000）。
-- 也可能是「马点 / pt」（如 +60、-25.0、▲15，四人合计约 0）——此时 kind = "pt"，▲ 或 △ 表示负数。
-- chip / チップ / 枚 一般是当天最后统一记录一次，填写到 chips（每人当天合计数量，可为负）。
+表格版式（一般如此，但请以照片为准）：
+1. 第一行是玩家名。名字旁边的数字是该玩家当天的 chip 数量（可为负，▲ / △ 表示负数），填到 chips；名字旁边没有数字的玩家不要填。
+2. 中间每一行是一场（半庄），四个数值依次对应第一行的四位玩家，填到 games。
+   - 数值可能是「终局点数」（如 41000，或简写成 410 / 41.0 表示 41000，四人合计约 100000）——此时 kind = "score"，value 一律换算成完整点数（例如 410 → 41000）。
+   - 也可能是「马点 / pt」（如 +60、-25.0、▲15，四人合计约 0）——此时 kind = "pt"，▲ 或 △ 表示负数。
+   - 如果有人这一场没上桌（五人以上轮换），只填上桌的四人。
+3. 最后一到两行可能是「合计」和/或「钱数」，它们不是场次，绝对不要放进 games：
+   - 合计：每人各场数值的累加，填到 totals（照原样记录数值）。
+   - 钱数：通常是比较大的整数（如 1500、-2300），填到 money（照原样记录）。
+   - 也可能两行都没有，此时 totals 和 money 为空数组。判断最后几行是不是场次时，可以验算：某一行如果等于上面各场按人累加的结果，就是合计行。
+4. 请自己验算：每场四人合计应为 100000（点数）或 0（马点）；合计行应等于各场累加。不一致时先重新看一遍数字，仍不一致就在 notes 里写明是哪一场、哪位玩家。
+
 - 已知玩家名：${known.length ? known.join('、') : '（无）'}。手写名字与已知玩家相近时请用已知名字。
 - 不要猜测看不清的数字；把不确定的地方写在 notes 里。`;
 
@@ -118,5 +136,5 @@ export async function recognizeSheet(file, apiKey, knownPlayers = [], model = DE
   if (!text) throw new Error('没有得到识别结果');
   let result;
   try { result = JSON.parse(text); } catch { throw new Error('识别结果格式错误，请重试'); }
-  return { games: result.games || [], chips: result.chips || [], notes: result.notes || '' };
+  return { games: result.games || [], chips: result.chips || [], totals: result.totals || [], money: result.money || [], notes: result.notes || '' };
 }

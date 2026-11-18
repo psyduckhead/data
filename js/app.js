@@ -1,4 +1,4 @@
-import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1 } from './scoring.js';
+import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized } from './scoring.js';
 import { store } from './store.js';
 import { DEFAULT_GEMINI_MODEL } from './recognize.js';
 
@@ -274,15 +274,31 @@ function renderAdd(q) {
 
 function renderRecognized(res) {
   const games = res.games || [];
+  const v = verifyRecognized(res, rules());
+  const fmtVal = (kind, x) => (kind === 'pt' ? fmtPt(x) : fmtScore(x));
+  const fmtNum = (x) => (Number.isInteger(x) ? fmtSigned(x) : fmtPt(x));
+  const badCount = v.games.filter((g) => !g.ok).length + v.totals.filter((t) => !t.ok).length;
   return `
-    <div class="field-label">识别到 ${games.length} 场，点击填入上方表单，核对后保存：</div>
+    ${res.chips?.length ? `
+      <div class="field-label">chips（第一行名字旁的数字）：</div>
+      <button data-act="fill-chips" class="recog">${res.chips.map((c) => `<span>${esc(c.name)} <b class="num">${fmtSigned(c.count)}</b></span>`).join('')}<span class="small muted">点击填入当日 chips</span></button>` : ''}
+    <div class="field-label" style="margin-top:10px">识别到 ${games.length} 场，点击填入上方表单，核对后保存：</div>
     ${games.map((g, k) => `
-      <button class="recog ${photo.used.has(k) ? 'used' : ''}" data-fill-game="${k}">
+      <button class="recog ${photo.used.has(k) ? 'used' : ''} ${v.games[k].ok ? '' : 'warn'}" data-fill-game="${k}">
         <span class="tag">#${k + 1} ${g.kind === 'pt' ? '马点' : '点数'}</span>
-        ${g.players.map((p) => `<span>${esc(p.name || '?')} <b class="num">${g.kind === 'pt' ? fmtPt(p.value) : fmtScore(p.value)}</b></span>`).join('')}
+        ${g.players.map((p) => `<span>${esc(p.name || '?')} <b class="num">${fmtVal(g.kind, p.value)}</b></span>`).join('')}
+        ${v.games[k].ok ? '' : `<span class="small bad">⚠ ${g.players.length !== 4 ? `只有 ${g.players.length} 人` : `合计差 ${fmtSigned(v.games[k].diff)}`}</span>`}
         ${photo.used.has(k) ? '<span class="small muted">已填入</span>' : ''}
       </button>`).join('')}
-    ${res.chips?.length ? `<button data-act="fill-chips" style="margin-top:6px">填入当日 chips：${res.chips.map((c) => `${esc(c.name)} ${fmtSigned(c.count)}`).join('，')}</button>` : ''}
+    ${v.totals.length ? `
+      <div class="field-label" style="margin-top:10px">合计行验算（照片上的合计 vs 各场累加）：</div>
+      <div class="verify">${v.totals.map((t) => `
+        <span class="${t.ok ? 'ok' : 'bad'}">${esc(t.name)} <b class="num">${fmtNum(t.written)}</b>${t.ok ? ' ✓' : ` ✗ 累加为 <b class="num">${fmtNum(t.computed)}</b>`}</span>`).join('')}
+      </div>` : '<p class="small muted" style="margin:8px 0 0">照片上没有合计行，无法和合计对照。</p>'}
+    ${res.money?.length ? `
+      <div class="field-label" style="margin-top:10px">钱数（仅供参考，不会记录）：</div>
+      <div class="verify">${res.money.map((m) => `<span>${esc(m.name)} <b class="num">${fmtSigned(m.value)}</b></span>`).join('')}</div>` : ''}
+    <p class="small ${badCount ? 'bad' : 'ok'}" style="margin:10px 0 0;font-weight:600">${badCount ? `⚠ 有 ${badCount} 处验算不一致，请对照照片检查` : '✓ 验算全部通过'}</p>
     ${res.notes ? `<p class="small muted">识别备注：${esc(res.notes)}</p>` : ''}`;
 }
 

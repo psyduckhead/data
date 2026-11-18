@@ -40,3 +40,30 @@ assert.equal(h.D.wins, 1); assert.equal(h.D.games, 2);
 const merged = mergeGames([{ id: 'a', updatedAt: '1' }, { id: 'b' }], [{ id: 'a', updatedAt: '2', x: 1 }], new Set(['a']), new Set(['b']));
 assert.deepEqual(merged, [{ id: 'a', updatedAt: '2', x: 1 }]);
 console.log('all tests passed');
+
+// 照片识别验算
+{
+  const { verifyRecognized } = await import('../js/scoring.js');
+  const P = (names, vals) => names.map((name, i) => ({ name, value: vals[i] }));
+  const N = ['A', 'B', 'C', 'D'];
+  const res = {
+    games: [
+      { kind: 'pt', players: P(N, [60, 10, -25, -45]) },
+      { kind: 'score', players: P(N, [30000, 40000, 20000, 10000]) }, // pt: 10, 50, -20, -40
+      { kind: 'pt', players: P(N, [10, 10, -20, 1]) },                 // 合计不为 0
+    ],
+    totals: P(N, [80, 70, -65, -84]),                                  // 各场马点按人累加
+  };
+  const v = verifyRecognized(res, R);
+  assert.deepEqual(v.games.map((g) => g.ok), [true, true, false]);
+  assert.equal(v.games[2].diff, 1);
+  assert.deepEqual(v.totals.map((t) => t.ok), [true, true, true, true]);
+  const bad = verifyRecognized({ games: res.games.slice(0, 2), totals: P(N, [70, 60, -45, -80]) }, R);
+  assert.deepEqual(bad.totals.map((t) => t.ok), [true, true, true, false]);
+  assert.equal(bad.totals[3].computed, -85);
+  assert.equal(bad.allOk, false);
+  // 合计按原始点数简写（千点）也能吻合
+  const raw = verifyRecognized({ games: [res.games[1]], totals: P(N, [30, 40, 20, 10]) }, R);
+  assert.ok(raw.totals.every((t) => t.ok));
+}
+console.log('verify tests passed');
