@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-18T12:21:25.463Z",
+  "updatedAt": "2026-11-18T12:21:54.603Z",
   "games": [
     {
       "id": "gmwm36ncupd06",
@@ -1016,6 +1016,35 @@
       ],
       "note": "",
       "updatedAt": "2026-11-18T12:21:24.974Z"
+    },
+    {
+      "id": "gmwm3cb5stxdw",
+      "date": "2026-11-12",
+      "createdAt": "2026-11-18T12:21:53.920Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "akiha",
+        "元",
+        "豆"
+      ],
+      "scores": [
+        25100,
+        -7500,
+        49600,
+        32800
+      ],
+      "note": "",
+      "updatedAt": "2026-11-18T12:21:53.920Z"
     },
     {
       "id": "gmwm0w24okhsg",
