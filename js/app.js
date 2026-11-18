@@ -1,6 +1,6 @@
-import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=20261118-3';
-import { store } from './store.js?v=20261118-3';
-import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=20261118-3';
+import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=202611182137';
+import { store } from './store.js?v=202611182137';
+import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=202611182137';
 
 // ---------- 工具 ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -545,68 +545,150 @@ function saveChips() {
 }
 
 // ========== 记录列表 ==========
-function resultRows(g) {
-  return gameResult(g).sort((a, b) => a.rank - b.rank).map((r) => `
-    <div class="res r${r.rank}">
-      <span class="rank">${r.rank}位</span>
-      <span class="n">${esc(r.name)}</span>
-      <span class="num s">${fmtScore(r.score)}</span>
-      <b class="num p">${fmtPt(r.pt)}</b>
-      <span class="num c">${r.chips ? `${fmtSigned(r.chips)}枚` : ''}</span>
-    </div>`).join('');
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const weekday = (date) => WEEKDAYS[new Date(`${date}T00:00:00`).getDay()];
+const openDays = new Set(); // 展开了小局的日期
+
+/** 月历：标出打过的日子；选了玩家时按当天输赢着色 */
+function calendarHtml(month, days, selected, me) {
+  const [y, m] = month.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const offset = (first.getDay() + 6) % 7; // 周一开头
+  const total = new Date(y, m, 0).getDate();
+  const shift = (k) => { const d = new Date(y, m - 1 + k, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const played = [...days.keys()].filter((d) => d.startsWith(month)).length;
+  let cells = '';
+  for (let i = 0; i < offset; i++) cells += '<span></span>';
+  for (let d = 1; d <= total; d++) {
+    const date = `${month}-${String(d).padStart(2, '0')}`;
+    const info = days.get(date);
+    if (!info) { cells += `<span class="cal-day${date === today() ? ' today' : ''}">${d}</span>`; continue; }
+    const cls = me && info.myPt != null ? sign(info.myPt) : '';
+    cells += `<button class="cal-day played ${cls}${date === selected ? ' on' : ''}${date === today() ? ' today' : ''}" data-cal-day="${date}" title="${date} · ${info.games} 场${me && info.myPt != null ? ` · ${esc(me)} ${fmtPt(info.myPt)}` : ''}">${d}<small>${info.games || 'c'}</small></button>`;
+  }
+  return `
+  <div class="card cal">
+    <div class="cal-head">
+      <button class="ghost" data-cal-month="${shift(-1)}" aria-label="上个月">‹</button>
+      <b>${y} 年 ${m} 月</b>
+      <button class="ghost" data-cal-month="${shift(1)}" aria-label="下个月">›</button>
+      <span class="spacer"></span>
+      <span class="small muted">本月打了 ${played} 天</span>
+    </div>
+    <div class="cal-grid">${WEEKDAYS.slice(1).concat('日').map((w) => `<span class="cal-w">${w}</span>`).join('')}${cells}</div>
+  </div>`;
 }
 
-function chipDayCard(d) {
-  const rows = d.players.map((name, i) => ({ name, chips: d.chips[i] })).sort((a, b) => b.chips - a.chips);
+function gameLine(g, k) {
+  const rows = gameResult(g).sort((a, b) => a.rank - b.rank);
   return `
-    <div class="card game chip-day">
-      <div class="game-meta">
-        <b>${esc(d.date)}</b><span class="tag">当日 chips</span>
-        ${store.pending.has(d.id) ? '<span class="tag">未同步</span>' : ''}
-        <span class="spacer"></span>
-        <a href="#/add?date=${encodeURIComponent(d.date)}" class="small">编辑</a>
-        <button class="link danger small" data-del-chips="${esc(d.date)}">删除</button>
-      </div>
-      <div class="chip-list">${rows.map((r) => `<span>${esc(r.name)} <b class="num ${sign(r.chips)}">${fmtSigned(r.chips)}</b></span>`).join('')}</div>
+    <div class="gl">
+      <span class="gl-i muted">#${k + 1}</span>
+      <span class="gl-p">${rows.map((r) => `<span class="gl-r r${r.rank}"><span class="n">${esc(r.name)}</span> <b class="num">${fmtPt(r.pt)}</b> <small class="num">${fmtScore(r.score)}</small></span>`).join('')}</span>
+      <span class="gl-a">
+        ${store.pending.has(g.id) ? '<span class="tag">未同步</span>' : ''}
+        <a href="#/add?id=${encodeURIComponent(g.id)}" class="small">编辑</a>
+        <button class="link danger small" data-del="${esc(g.id)}">删除</button>
+      </span>
     </div>`;
 }
 
+function dayCard(date, games, chipDay, me, open) {
+  const stats = playerStats(games, chipDay ? [chipDay] : []).sort((a, b) => b.pt - a.pt);
+  // 只有 chips、没有对局的玩家也列出来
+  chipDay?.players.forEach((name, i) => {
+    if (!stats.some((s) => s.name === name)) stats.push({ name, games: 0, pt: 0, rankCount: [0, 0, 0, 0], chips: chipDay.chips[i] || 0 });
+  });
+  const notes = [...new Set(games.map((g) => g.note).filter(Boolean))];
+  const pending = games.some((g) => store.pending.has(g.id)) || (chipDay && store.pending.has(chipDay.id));
+  return `
+  <div class="card day">
+    <div class="day-head">
+      <b>${date.slice(5).replace('-', '/')}</b><span class="muted">周${weekday(date)}</span>
+      <span class="tag">${games.length} 场</span>
+      ${notes.map((n) => `<span class="small muted">${esc(n)}</span>`).join('')}
+      ${pending ? '<span class="tag">未同步</span>' : ''}
+      <span class="spacer"></span>
+      <a href="#/add?date=${encodeURIComponent(date)}" class="small">＋录入</a>
+    </div>
+    <div class="ds-list">${stats.map((s) => `
+      <div class="ds${s.name === me ? ' me' : ''}">
+        <span class="n">${esc(s.name)}</span>
+        <b class="num ${sign(s.pt)}">${s.games ? fmtPt(s.pt) : '—'}</b>
+        <span class="rk small muted" title="1位-2位-3位-4位 次数">${s.games ? s.rankCount.join('-') : ''}</span>
+        <span class="c small num ${sign(s.chips)}">${s.chips ? `${fmtSigned(s.chips)}枚` : ''}</span>
+      </div>`).join('')}
+    </div>
+    ${games.length || chipDay ? `
+    <details data-day="${date}" ${open ? 'open' : ''}>
+      <summary class="small">小局 ${games.length} 场${chipDay ? ' · 当日 chips' : ''}</summary>
+      ${games.map(gameLine).join('')}
+      ${chipDay ? `
+      <div class="gl chips-line small">
+        <span class="muted">当日 chips</span><span class="spacer"></span>
+        <a href="#/add?date=${encodeURIComponent(date)}">编辑</a>
+        <button class="link danger small" data-del-chips="${esc(date)}">删除</button>
+      </div>` : ''}
+    </details>` : ''}
+  </div>`;
+}
+
 function renderList(q) {
-  const p = q.p || '', o = q.q || '';
+  const p = q.p || '', o = q.q || '', sel = q.d || '';
   const has = (list) => (!p || list.includes(p)) && (!o || list.includes(o));
-  const games = store.sortedGames().reverse().filter((g) => has(g.players));
+  const games = store.sortedGames().filter((g) => has(g.players));
   const chipDays = new Map(store.chipDays.filter((d) => has(d.players)).map((d) => [d.date, d]));
+  // 每天的汇总，供日历和列表使用
+  const byDay = new Map();
+  for (const g of games) (byDay.get(g.date) || byDay.set(g.date, []).get(g.date)).push(g);
+  for (const d of chipDays.keys()) if (!byDay.has(d)) byDay.set(d, []);
+  const days = new Map([...byDay].map(([date, gs]) => {
+    const mine = p ? playerStats(gs, chipDays.has(date) ? [chipDays.get(date)] : []).find((x) => x.name === p) : null;
+    return [date, { games: gs.length, myPt: mine ? mine.pt : null }];
+  }));
+  const dates = [...byDay.keys()].sort().reverse();
+  const month = q.m || (sel || dates[0] || today()).slice(0, 7);
+  const shown = sel ? dates.filter((d) => d === sel) : dates;
+
   let html = `
   <div class="filters">
     <label class="field">玩家<select data-f="p">${playerOptions(p, '全部')}</select></label>
     <label class="field">同桌<select data-f="q">${playerOptions(o, '不限')}</select></label>
     <span class="spacer"></span>
-    <span class="muted small">${games.length} 场</span>
-  </div>`;
-  if (!games.length && !chipDays.size) html += '<div class="card empty">没有记录。去「录入」添加第一场吧。</div>';
-  // 按日期倒序；每天先显示当日 chips，再显示当天的对局
-  const dates = [...new Set([...games.map((g) => g.date), ...chipDays.keys()])].sort().reverse();
-  let month = '';
-  for (const date of dates) {
+    <span class="muted small">${dates.length} 天 · ${games.length} 场</span>
+  </div>
+  ${calendarHtml(month, days, sel, p)}
+  ${sel ? `<div class="row sel-day"><span>只看 <b>${sel}</b>（周${weekday(sel)}）</span><button class="ghost small" data-clear-day>显示全部日期</button></div>` : ''}`;
+  if (!shown.length) html += `<div class="card empty">${sel ? '这一天没有记录。' : '没有记录。去「录入」添加第一场吧。'}</div>`;
+  let curMonth = '';
+  for (const date of shown) {
     const m = date.slice(0, 7);
-    if (m !== month) { month = m; html += `<div class="month-head">${m.replace('-', ' 年 ')} 月</div>`; }
-    if (chipDays.has(date)) html += chipDayCard(chipDays.get(date));
-    for (const g of games.filter((x) => x.date === date)) html += `
-    <div class="card game">
-      <div class="game-meta">
-        <b>${esc(g.date)}</b>${g.note ? `<span>${esc(g.note)}</span>` : ''}
-        ${store.pending.has(g.id) ? '<span class="tag">未同步</span>' : ''}
-        <span class="spacer"></span>
-        <a href="#/add?id=${encodeURIComponent(g.id)}" class="small">编辑</a>
-        <button class="link danger small" data-del="${esc(g.id)}">删除</button>
-      </div>
-      <div class="results">${resultRows(g)}</div>
-    </div>`;
+    if (m !== curMonth) { curMonth = m; html += `<div class="month-head">${m.replace('-', ' 年 ')} 月</div>`; }
+    html += dayCard(date, byDay.get(date), chipDays.get(date), p, !!sel || openDays.has(date));
   }
   view.innerHTML = html;
+
+  const go = (patch) => {
+    const nq = { ...q, ...patch };
+    Object.keys(nq).forEach((k) => !nq[k] && delete nq[k]);
+    location.hash = `#/list${Object.keys(nq).length ? `?${new URLSearchParams(nq)}` : ''}`;
+  };
   bindView({
     click(e) {
-      const chipDate = e.target.closest('[data-del-chips]')?.dataset.delChips;
+      const t = e.target;
+      const sum = t.closest('details[data-day] > summary');
+      if (sum) {
+        const d = sum.parentElement;
+        // click 先于展开状态变化触发：当前是关着的，点完就是开的
+        if (d.open) openDays.delete(d.dataset.day); else openDays.add(d.dataset.day);
+        return;
+      }
+      const calDay = t.closest('[data-cal-day]')?.dataset.calDay;
+      if (calDay) return go({ d: calDay === sel ? '' : calDay, m: calDay.slice(0, 7) });
+      const calMonth = t.closest('[data-cal-month]')?.dataset.calMonth;
+      if (calMonth) return go({ m: calMonth });
+      if (t.closest('[data-clear-day]')) return go({ d: '' });
+      const chipDate = t.closest('[data-del-chips]')?.dataset.delChips;
       if (chipDate) {
         if (!confirm(`删除 ${chipDate} 的 chips 记录？`)) return;
         store.deleteChipDay(chipDate);
@@ -614,7 +696,7 @@ function renderList(q) {
         renderList(q);
         return toast('已删除');
       }
-      const id = e.target.closest('[data-del]')?.dataset.del;
+      const id = t.closest('[data-del]')?.dataset.del;
       if (!id || !confirm('确定删除这场对局？')) return;
       store.deleteGame(id);
       afterDataChange();
@@ -623,10 +705,7 @@ function renderList(q) {
     },
     change(e) {
       const f = e.target.dataset.f;
-      if (!f) return;
-      const nq = { ...q, [f]: e.target.value };
-      Object.keys(nq).forEach((k) => !nq[k] && delete nq[k]);
-      location.hash = `#/list${Object.keys(nq).length ? `?${new URLSearchParams(nq)}` : ''}`;
+      if (f) go({ [f]: e.target.value });
     },
   });
 }
