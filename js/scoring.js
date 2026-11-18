@@ -33,17 +33,21 @@ export function gameResult(g) {
   return g.players.map((name, i) => ({ seat: i, name, score: g.scores[i], pt: pts[i], rank: rk[i] + 1, chips: g.chips?.[i] || 0 }));
 }
 
-export function playerStats(games) {
+/** chipDays: 每天一条 chips 记录 [{date, players:[], chips:[]}]；旧数据里每场的 chips 也会计入 */
+export function playerStats(games, chipDays = []) {
   const map = new Map();
+  const get = (name) => map.get(name) || map.set(name, { name, games: 0, pt: 0, rankCount: [0, 0, 0, 0], chips: 0 }).get(name);
   for (const g of games) {
     for (const r of gameResult(g)) {
-      const s = map.get(r.name) || { name: r.name, games: 0, pt: 0, rankCount: [0, 0, 0, 0], chips: 0 };
+      const s = get(r.name);
       s.games++;
       s.pt = round1(s.pt + r.pt);
       s.rankCount[r.rank - 1]++;
       s.chips += r.chips;
-      map.set(r.name, s);
     }
+  }
+  for (const d of chipDays) {
+    d.players.forEach((name, i) => { if (map.has(name)) map.get(name).chips += d.chips[i] || 0; });
   }
   return [...map.values()].map((s) => ({
     ...s,

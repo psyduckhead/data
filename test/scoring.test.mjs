@@ -27,6 +27,10 @@ assert.equal(gameResult(games[0])[0].rank, 1);
 const A = playerStats(games).find((s) => s.name === 'A');
 assert.equal(A.games, 3); assert.equal(A.chips, 3); assert.deepEqual(A.rankCount, [1, 1, 1, 0]);
 assert.equal(A.pt, 60 + 10 - 20);
+// 当日 chips 记录与旧的每场 chips 一起计入
+const withDay = Object.fromEntries(playerStats(games, [{ date: '2026-11-01', players: ['A', 'B', 'Z'], chips: [5, -3, -2] }]).map((x) => [x.name, x]));
+assert.equal(withDay.A.chips, 8); assert.equal(withDay.B.chips, -4);
+assert.equal(withDay.Z, undefined); // 没有对局的玩家不进排行榜
 const h = Object.fromEntries(headToHead(games, 'A').map((x) => [x.name, x]));
 assert.equal(h.B.games, 3); assert.equal(h.B.wins, 2); assert.equal(h.B.losses, 1);
 assert.equal(h.C.games, 3); assert.equal(h.C.wins, 2);

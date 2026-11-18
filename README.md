@@ -4,8 +4,9 @@
 
 ## 功能
 
-- **录入**：四家终局点数（或马点 pt）+ chips。可以留空一家，系统自动补齐。四家合计必须为 100,000 才能保存。1–4 位分别用金、蓝、灰、红标出。
-- **照片识别**：上传手写记分表的照片，由 Claude 识别出每一场的点数或马点和 chips，点一下填入表单，核对后保存。不填 API Key 时可以对照照片手动录入。
+- **录入**：四家终局点数（或马点 pt）。可以留空一家，系统自动补齐。四家合计必须为 100,000 才能保存。1–4 位分别用金、蓝、灰、红标出。手机键盘没有负号时，点输入框旁的 **±** 切换正负（也可以输入 ▲ / △）。
+- **当日 chips**：chips 不用每场填，一天（4–8 场）打完后在「录入」页下方的「当日 chips」里记一次每人的合计。每个日期一条记录。
+- **照片识别**：上传手写记分表的照片，由 Gemini 识别出每一场的点数或马点和当日 chips，点一下填入表单，核对后保存。不填 API Key 时可以对照照片手动录入。
 - **记录**：按月浏览，可以按玩家和同桌对手筛选，支持编辑和删除。
 - **统计**：排行榜（总 pt、平均顺位、各顺位率、chips）。选中一位玩家后，可以看到他和每位对手同桌时的胜率（名次比对手高算胜）。
 - **同步**：保存后自动提交到 GitHub 仓库的 `data/games.json`；也可以导入导出 JSON 和 CSV。
@@ -37,7 +38,7 @@ pt = (终局点数 − 30000) / 1000 + 马（1 位再 +20）
 
 1. 创建 GitHub Fine-grained Token：GitHub → Settings → Developer settings → Fine-grained tokens，只授权这个仓库，权限选 **Contents: Read and write**。
 2. 打开网站，在「设置 → GitHub 同步」里填 Token。在 github.io 上，用户名和仓库名会自动识别。
-3. （可选）照片识别需要先在 [console.anthropic.com](https://console.anthropic.com/settings/keys) 创建 API Key（按量付费，需要账户里有余额），再填到「设置 → 照片识别」。
+3. （可选）照片识别使用 Gemini API：在 [Google AI Studio](https://aistudio.google.com/apikey) 创建 API Key，并在该 Key 所在项目点 **Set up billing** 开通付费层级（按量计费；付费层级的数据不会用于训练），再填到「设置 → 照片识别」。模型默认 `gemini-flash-latest`，可在设置里改。
 
 两个 Key 都只保存在你自己浏览器的 localStorage 里，不会写进仓库。不要在公共电脑上保存。
 
@@ -47,6 +48,18 @@ pt = (终局点数 − 30000) / 1000 + 马（1 位再 +20）
 python3 -m http.server 8000   # 打开 http://localhost:8000
 node test/scoring.test.mjs    # 测试计分逻辑
 ```
+
+## 数据格式
+
+`data/games.json`：`games` 是每一场对局，`chips` 是每天一条的 chips 记录：
+
+```json
+{ "version": 1,
+  "games": [{ "id": "…", "date": "2026-11-15", "players": ["小明", "小红", "阿强", "老王"], "scores": [50000, 30000, 15000, 5000], "rules": {…} }],
+  "chips": [{ "id": "chips-2026-11-15", "date": "2026-11-15", "players": ["小明", "小红", "阿强", "老王"], "chips": [3, -1, 0, -2] }] }
+```
+
+旧数据里每场自带的 `chips` 仍然会计入统计。
 
 ## CSV 导入格式
 
@@ -62,7 +75,7 @@ index.html         页面
 css/style.css      样式（跟随系统深色模式）
 js/app.js          界面
 js/scoring.js      计分与统计
-js/recognize.js    照片识别（Claude API）
+js/recognize.js    照片识别（Gemini API）
 js/store.js        本地存储与 GitHub 同步
 data/games.json    对局数据
 ```

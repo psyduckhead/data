@@ -118,16 +118,24 @@ details summary { cursor: pointer; color: var(--text-2); font-size: 14px; margin
 .r4 { --row-bg: var(--r4-bg); --row-ink: var(--r4-ink); }
 
 /* 录入表格 */
-.entry-head, .entry-row { display: grid; grid-template-columns: 46px minmax(0, 1fr) 110px 64px 64px; gap: 8px; align-items: center; }
+.entry-head, .entry-row { display: grid; grid-template-columns: 46px minmax(0, 1fr) 150px 72px; gap: 8px; align-items: center; }
 .entry-head { padding: 0 8px; margin-bottom: 4px; }
 .entry-row { padding: 6px 8px; border-radius: 9px; margin-bottom: 4px; background: var(--row-bg, transparent); transition: background 0.15s; }
 .entry-calc { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) {
   .entry-head { display: none; }
-  .entry-row { grid-template-columns: 46px minmax(0, 1fr) 96px; }
-  .entry-row [data-chips] { grid-column: 2; }
+  .entry-row { grid-template-columns: 46px minmax(0, 1fr) 138px; }
   .entry-calc { grid-column: 3; }
 }
+/* 数字输入 + 正负切换按钮 */
+.num-wrap { display: flex; min-width: 0; }
+.num-wrap input { flex: 1; min-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.neg-btn { flex: none; width: 36px; padding: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; font-weight: 700; }
+/* 当日 chips */
+.chip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 16px; margin-top: 8px; }
+.chip-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px; align-items: center; }
+.chip-row .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-list { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
 .sum-status { margin-top: 10px; font-size: 14px; font-weight: 600; }
 .sum-status .ok { color: var(--pos); }
 .sum-status .bad { color: var(--neg); }

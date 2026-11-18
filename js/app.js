@@ -1,5 +1,6 @@
 import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1 } from './scoring.js';
 import { store } from './store.js';
+import { DEFAULT_GEMINI_MODEL } from './recognize.js';
 
 // ---------- 工具 ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -38,6 +39,28 @@ function download(name, text, type) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+/** 解析数字输入：支持 ▲ △ − － 作为负号，忽略逗号；空 → null，非法 → NaN */
+function toNum(v) {
+  const t = String(v ?? '').trim().replace(/^[▲△−－ー]/, '-').replace(/[,，\s]/g, '');
+  return t === '' ? null : Number(t);
+}
+function toggleSign(v) {
+  const t = String(v ?? '').trim();
+  if (/^[-▲△−－ー]/.test(t)) return t.slice(1);
+  if (t.startsWith('+')) return `-${t.slice(1)}`;
+  return `-${t}`;
+}
+/** 数字输入框 + 「±」按钮（手机数字键盘通常没有负号） */
+const numField = (attrs, value, placeholder = '') =>
+  `<span class="num-wrap"><input ${attrs} class="num" inputmode="decimal" autocomplete="off" value="${esc(value)}" placeholder="${esc(placeholder)}"><button type="button" class="neg-btn" data-neg tabindex="-1" title="切换正负" aria-label="切换正负">±</button></span>`;
+view.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-neg]');
+  if (!b) return;
+  const input = b.parentElement.querySelector('input');
+  input.value = toggleSign(input.value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
 const playerOptions = (sel, empty) =>
   `<option value="">${empty}</option>${store.players().map((p) => `<option ${p === sel ? 'selected' : ''}>${esc(p)}</option>`).join('')}`;
 
@@ -90,15 +113,16 @@ window.addEventListener('hashchange', () => { window.scrollTo(0, 0); route(); })
 // ========== 录入 ==========
 let form = null;
 let photo = null; // {url, file, loading, error, result, used:Set}
+let chipForm = null; // 当日 chips：{date, values:{name: string}, extra:[name]}
 
 function blankForm() {
   const last = store.getSettings().lastPlayers || ['', '', '', ''];
-  return { id: null, date: today(), note: '', kind: 'score', players: last.slice(0, 4), values: ['', '', '', ''], chips: ['', '', '', ''] };
+  return { id: null, date: today(), note: '', kind: 'score', players: last.slice(0, 4), values: ['', '', '', ''] };
 }
 
 /** 解析表单 → {scores, pts, diff}；允许留空一人自动补齐 */
 function computeForm(f, r) {
-  const vals = f.values.map((v) => (String(v).trim() === '' ? null : Number(String(v).replace(/[▲△]/, '-').replace(/,/g, ''))));
+  const vals = f.values.map(toNum);
   if (vals.some((v) => Number.isNaN(v))) return null;
   const blanks = vals.filter((v) => v === null).length;
   let filled = -1;
@@ -124,9 +148,12 @@ function renderAdd(q) {
   if (!form || form.id !== editingId) {
     const g = editingId && store.getGame(editingId);
     form = g
-      ? { id: g.id, date: g.date, note: g.note || '', kind: 'score', players: g.players.slice(), values: g.scores.map(String), chips: (g.chips || [0, 0, 0, 0]).map((c) => (c ? String(c) : '')) }
+      ? { id: g.id, date: g.date, note: g.note || '', kind: 'score', players: g.players.slice(), values: g.scores.map(String) }
       : blankForm();
   }
+  // 从记录页「编辑当日 chips」跳转过来
+  let scrollToChips = false;
+  if (q.date && !form.id && form.fromQuery !== q.date) { form.date = q.date; form.fromQuery = q.date; scrollToChips = true; }
   const f = form, r = rules();
   const known = store.players();
   const apiKey = store.getApiKey();
@@ -148,13 +175,12 @@ function renderAdd(q) {
       <span class="small muted">${rulesText(r)}</span>
     </div>
     <datalist id="known-players">${known.map((p) => `<option value="${esc(p)}">`).join('')}</datalist>
-    <div class="entry-head small muted"><span></span><span>玩家</span><span>${f.kind === 'score' ? '终局点数' : '马点'}</span><span>chips</span></div>
+    <div class="entry-head small muted"><span></span><span>玩家</span><span>${f.kind === 'score' ? '终局点数' : '马点'}</span><span></span></div>
     ${[0, 1, 2, 3].map((i) => `
       <div class="entry-row" id="row-${i}">
         <span class="rank" id="rank-${i}">${SEATS[i]}</span>
         <input data-player="${i}" list="known-players" value="${esc(f.players[i])}" placeholder="${SEATS[i]}家" autocomplete="off">
-        <input data-value="${i}" class="num" inputmode="decimal" value="${esc(f.values[i])}">
-        <input data-chips="${i}" class="num" inputmode="numeric" value="${esc(f.chips[i])}" placeholder="chips">
+        ${numField(`data-value="${i}"`, f.values[i])}
         <div class="entry-calc small" id="calc-${i}"></div>
       </div>`).join('')}
     <div id="sum-status" class="sum-status"></div>
@@ -163,6 +189,7 @@ function renderAdd(q) {
       ${f.id ? '<button data-act="cancel-edit">取消编辑</button>' : '<button data-act="clear">清空</button>'}
     </div>
   </div>
+  <div class="card" id="chip-card"></div>
   ${photo ? `
   <div class="card">
     <div class="photo-grid">
@@ -170,8 +197,8 @@ function renderAdd(q) {
       <div>
         <div class="row">
         ${apiKey
-          ? `<button class="primary" data-act="recognize" ${photo.loading ? 'disabled' : ''}>${photo.loading ? '识别中…（约 10–30 秒）' : photo.result ? '重新识别' : '用 Claude 识别'}</button>`
-          : '<p class="small muted" style="margin:0">在「<a href="#/settings">设置</a>」填写 Anthropic API Key 后可自动识别；也可以对照照片手动录入。</p>'}
+          ? `<button class="primary" data-act="recognize" ${photo.loading ? 'disabled' : ''}>${photo.loading ? '识别中…（约 10–30 秒）' : photo.result ? '重新识别' : '用 Gemini 识别'}</button>`
+          : '<p class="small muted" style="margin:0">在「<a href="#/settings">设置</a>」填写 Gemini API Key 后可自动识别；也可以对照照片手动录入。</p>'}
           <button class="ghost" data-act="close-photo">关闭照片</button>
         </div>
         ${photo.error ? `<div class="notice" style="margin-top:10px">${esc(photo.error)}</div>` : ''}
@@ -180,6 +207,8 @@ function renderAdd(q) {
     </div>
   </div>` : ''}`;
   updatePreview();
+  renderChipCard();
+  if (scrollToChips) $('#chip-card').scrollIntoView({ block: 'start' });
 
   bindView({
     click(e) {
@@ -198,23 +227,40 @@ function renderAdd(q) {
         return renderAdd(q);
       }
       if (ds.act === 'fill-chips') {
+        ensureChipForm();
         for (const c of photo.result.chips) {
-          const i = form.players.findIndex((p) => p.trim() === c.name.trim());
-          if (i >= 0) form.chips[i] = String(c.count);
+          const name = c.name.trim();
+          if (!name) continue;
+          chipForm.values[name] = String(c.count);
+          if (!chipForm.extra.includes(name)) chipForm.extra.push(name);
         }
-        return renderAdd(q);
+        renderChipCard();
+        $('#chip-card').scrollIntoView({ block: 'start', behavior: 'smooth' });
+        return toast(`已填入 ${form.date} 的 chips，核对后点「保存 chips」`);
       }
+      if (ds.act === 'save-chips') return saveChips();
+      if (ds.act === 'delete-chips') {
+        if (!confirm(`删除 ${form.date} 的 chips 记录？`)) return;
+        store.deleteChipDay(form.date);
+        chipForm = null;
+        afterDataChange();
+        renderChipCard();
+        return toast('已删除');
+      }
+      if (ds.act === 'add-chip-player') return addChipPlayer();
     },
     input(e) {
       const t = e.target, ds = t.dataset;
-      if (t.id === 'f-date') form.date = t.value;
+      if (t.id === 'f-date') { form.date = t.value; renderChipCard(); }
       else if (t.id === 'f-note') form.note = t.value;
       else if (ds.player) form.players[ds.player] = t.value;
       else if (ds.value) form.values[ds.value] = t.value;
-      else if (ds.chips) form.chips[ds.chips] = t.value;
+      else if (ds.chipIdx) { chipForm.values[chipForm.names[ds.chipIdx]] = t.value; return updateChipStatus(); }
+      else return;
       updatePreview();
     },
     change(e) {
+      if (e.target.id === 'chip-add') return addChipPlayer();
       if (e.target.id !== 'photo-input') return;
       const file = e.target.files[0];
       if (!file) return;
@@ -236,7 +282,7 @@ function renderRecognized(res) {
         ${g.players.map((p) => `<span>${esc(p.name || '?')} <b class="num">${g.kind === 'pt' ? fmtPt(p.value) : fmtScore(p.value)}</b></span>`).join('')}
         ${photo.used.has(k) ? '<span class="small muted">已填入</span>' : ''}
       </button>`).join('')}
-    ${res.chips?.length ? `<button data-act="fill-chips" style="margin-top:6px">填入 chips：${res.chips.map((c) => `${esc(c.name)} ${fmtSigned(c.count)}`).join('，')}</button>` : ''}
+    ${res.chips?.length ? `<button data-act="fill-chips" style="margin-top:6px">填入当日 chips：${res.chips.map((c) => `${esc(c.name)} ${fmtSigned(c.count)}`).join('，')}</button>` : ''}
     ${res.notes ? `<p class="small muted">识别备注：${esc(res.notes)}</p>` : ''}`;
 }
 
@@ -247,7 +293,7 @@ async function runRecognize(q) {
   renderAdd(q);
   try {
     const { recognizeSheet } = await import('./recognize.js');
-    photo.result = await recognizeSheet(photo.file, store.getApiKey(), store.players());
+    photo.result = await recognizeSheet(photo.file, store.getApiKey(), store.players(), store.getSettings().geminiModel);
     if (photo.result.games?.length === 1) { fillFromGame(photo.result.games[0]); photo.used.add(0); }
   } catch (err) {
     photo.error = err.message || String(err);
@@ -271,12 +317,10 @@ function updatePreview() {
       : '';
   }
   const st = $('#sum-status');
-  const chipSum = form.chips.reduce((a, v) => a + (Number(v) || 0), 0);
-  const chipNote = chipSum ? `<span class="muted"> · chips 合计 ${fmtSigned(chipSum)}</span>` : '';
   let ok = false;
-  if (!c) st.innerHTML = '<span class="muted">填入四家数值（可留空一家自动补齐）</span>';
-  else if (c.diff === 0) { ok = true; st.innerHTML = `<span class="ok">✓ 合计 ${fmtScore(totalOf(r))}</span>${chipNote}`; }
-  else st.innerHTML = `<span class="bad">✗ 合计 ${fmtScore(totalOf(r) + c.diff)}，与 ${fmtScore(totalOf(r))} 相差 ${fmtSigned(c.diff)}</span>${chipNote}`;
+  if (!c) st.innerHTML = '<span class="muted">填入四家数值（可留空一家自动补齐；负数可点 ± 切换）</span>';
+  else if (c.diff === 0) { ok = true; st.innerHTML = `<span class="ok">✓ 合计 ${fmtScore(totalOf(r))}</span>`; }
+  else st.innerHTML = `<span class="bad">✗ 合计 ${fmtScore(totalOf(r) + c.diff)}，与 ${fmtScore(totalOf(r))} 相差 ${fmtSigned(c.diff)}</span>`;
   $('#save-btn').disabled = !ok;
 }
 
@@ -295,18 +339,113 @@ function saveForm() {
     rules: old?.rules || r,
     players,
     scores: c.scores,
-    chips: form.chips.map((v) => Math.round(Number(v) || 0)),
+    // chips 改为每天记录一次；旧数据里每场的 chips 编辑时保留
+    ...(old?.chips?.some(Boolean) ? { chips: old.chips } : {}),
     note: form.note.trim(),
   });
   const s = store.getSettings();
   s.lastPlayers = players;
   store.setSettings(s);
   const wasEdit = !!form.id;
+  const { date, fromQuery } = form;
   form = null;
   afterDataChange();
   toast(wasEdit ? '已更新' : '已保存');
   if (wasEdit) location.hash = '#/list';
-  else renderAdd({});
+  else {
+    // 同一天通常连打多场：保留日期，方便继续录入和最后记 chips
+    form = { ...blankForm(), date, fromQuery };
+    renderAdd(parseHash().q);
+  }
+}
+
+// ---------- 当日 chips ----------
+function ensureChipForm() {
+  if (chipForm && chipForm.date === form.date) return;
+  const rec = store.getChipDay(form.date);
+  chipForm = { date: form.date, values: {}, extra: [] };
+  rec?.players.forEach((p, i) => (chipForm.values[p] = String(rec.chips[i])));
+}
+
+/** 当天出场的玩家（按出场顺序）+ 已有记录里的玩家 + 手动添加的玩家 */
+function chipNames() {
+  const names = [];
+  const add = (p) => p && !names.includes(p) && names.push(p);
+  store.sortedGames().filter((g) => g.date === chipForm.date).forEach((g) => g.players.forEach(add));
+  store.getChipDay(chipForm.date)?.players.forEach(add);
+  chipForm.extra.forEach(add);
+  return names;
+}
+
+function renderChipCard() {
+  const el = $('#chip-card');
+  if (!el) return;
+  if (!form.date) { el.innerHTML = '<h2>当日 chips</h2><p class="muted small">请先选择日期。</p>'; return; }
+  ensureChipForm();
+  const names = (chipForm.names = chipNames());
+  const rec = store.getChipDay(chipForm.date);
+  const nGames = store.games.filter((g) => g.date === chipForm.date).length;
+  el.innerHTML = `
+    <div class="row" style="margin-bottom:4px">
+      <h2 style="margin:0">当日 chips</h2>
+      <span class="muted small">${esc(chipForm.date)} · 已录 ${nGames} 场${rec ? ' · 已保存' : ''}</span>
+    </div>
+    <p class="muted small" style="margin-top:4px">chips 每天只记一次：当天所有半庄打完后，在这里填写每人的 chips 合计。</p>
+    ${names.length ? `<div class="chip-grid">${names.map((n, i) => `
+      <label class="chip-row"><span class="n">${esc(n)}</span>${numField(`data-chip-idx="${i}"`, chipForm.values[n] ?? '', '0')}</label>`).join('')}
+    </div>` : '<p class="muted small">这一天还没有对局。保存对局后，这里会列出当天的玩家；也可以手动添加。</p>'}
+    <div class="row" style="margin-top:8px">
+      <input id="chip-add" list="known-players" placeholder="添加玩家" autocomplete="off" style="max-width:160px">
+      <button class="ghost" data-act="add-chip-player">添加</button>
+    </div>
+    <div id="chip-status" class="sum-status"></div>
+    <div class="row" style="margin-top:8px">
+      <button class="primary" data-act="save-chips" id="chip-save" ${names.length ? '' : 'disabled'}>保存 chips</button>
+      ${rec ? '<button class="ghost danger" data-act="delete-chips">删除当日 chips</button>' : ''}
+    </div>`;
+  updateChipStatus();
+}
+
+function updateChipStatus() {
+  const st = $('#chip-status');
+  if (!st) return;
+  const vals = chipForm.names.map((n) => toNum(chipForm.values[n]));
+  if (vals.some((v) => Number.isNaN(v) || (v !== null && !Number.isInteger(v)))) {
+    st.innerHTML = '<span class="bad">chips 必须是整数</span>';
+    return;
+  }
+  const sum = vals.reduce((a, v) => a + (v || 0), 0);
+  st.innerHTML = sum === 0
+    ? '<span class="ok">✓ 合计 0</span>'
+    : `<span class="bad">合计 ${fmtSigned(sum)}（通常应为 0，确认无误也可以保存）</span>`;
+}
+
+function addChipPlayer() {
+  const input = $('#chip-add');
+  const name = input.value.trim();
+  if (!name) return;
+  ensureChipForm();
+  if (!chipForm.extra.includes(name)) chipForm.extra.push(name);
+  renderChipCard();
+  const i = chipForm.names.indexOf(name);
+  $(`[data-chip-idx="${i}"]`)?.focus();
+}
+
+function saveChips() {
+  const players = [], chips = [];
+  for (const n of chipForm.names) {
+    const v = toNum(chipForm.values[n]);
+    if (v === null) continue;
+    if (!Number.isInteger(v)) return toast(`${n} 的 chips 必须是整数`, 'error');
+    players.push(n);
+    chips.push(v);
+  }
+  if (!players.length) return toast('请至少填写一位玩家的 chips', 'error');
+  store.saveChipDay({ date: chipForm.date, players, chips });
+  chipForm = null;
+  afterDataChange();
+  renderChipCard();
+  toast(`已保存 ${form.date} 的 chips`);
 }
 
 // ========== 记录列表 ==========
@@ -321,9 +460,26 @@ function resultRows(g) {
     </div>`).join('');
 }
 
+function chipDayCard(d) {
+  const rows = d.players.map((name, i) => ({ name, chips: d.chips[i] })).sort((a, b) => b.chips - a.chips);
+  return `
+    <div class="card game chip-day">
+      <div class="game-meta">
+        <b>${esc(d.date)}</b><span class="tag">当日 chips</span>
+        ${store.pending.has(d.id) ? '<span class="tag">未同步</span>' : ''}
+        <span class="spacer"></span>
+        <a href="#/add?date=${encodeURIComponent(d.date)}" class="small">编辑</a>
+        <button class="link danger small" data-del-chips="${esc(d.date)}">删除</button>
+      </div>
+      <div class="chip-list">${rows.map((r) => `<span>${esc(r.name)} <b class="num ${sign(r.chips)}">${fmtSigned(r.chips)}</b></span>`).join('')}</div>
+    </div>`;
+}
+
 function renderList(q) {
   const p = q.p || '', o = q.q || '';
-  const games = store.sortedGames().reverse().filter((g) => (!p || g.players.includes(p)) && (!o || g.players.includes(o)));
+  const has = (list) => (!p || list.includes(p)) && (!o || list.includes(o));
+  const games = store.sortedGames().reverse().filter((g) => has(g.players));
+  const chipDays = new Map(store.chipDays.filter((d) => has(d.players)).map((d) => [d.date, d]));
   let html = `
   <div class="filters">
     <label class="field">玩家<select data-f="p">${playerOptions(p, '全部')}</select></label>
@@ -331,12 +487,15 @@ function renderList(q) {
     <span class="spacer"></span>
     <span class="muted small">${games.length} 场</span>
   </div>`;
-  if (!games.length) html += '<div class="card empty">没有记录。去「录入」添加第一场吧。</div>';
+  if (!games.length && !chipDays.size) html += '<div class="card empty">没有记录。去「录入」添加第一场吧。</div>';
+  // 按日期倒序；每天先显示当日 chips，再显示当天的对局
+  const dates = [...new Set([...games.map((g) => g.date), ...chipDays.keys()])].sort().reverse();
   let month = '';
-  for (const g of games) {
-    const m = g.date.slice(0, 7);
+  for (const date of dates) {
+    const m = date.slice(0, 7);
     if (m !== month) { month = m; html += `<div class="month-head">${m.replace('-', ' 年 ')} 月</div>`; }
-    html += `
+    if (chipDays.has(date)) html += chipDayCard(chipDays.get(date));
+    for (const g of games.filter((x) => x.date === date)) html += `
     <div class="card game">
       <div class="game-meta">
         <b>${esc(g.date)}</b>${g.note ? `<span>${esc(g.note)}</span>` : ''}
@@ -351,6 +510,14 @@ function renderList(q) {
   view.innerHTML = html;
   bindView({
     click(e) {
+      const chipDate = e.target.closest('[data-del-chips]')?.dataset.delChips;
+      if (chipDate) {
+        if (!confirm(`删除 ${chipDate} 的 chips 记录？`)) return;
+        store.deleteChipDay(chipDate);
+        afterDataChange();
+        renderList(q);
+        return toast('已删除');
+      }
       const id = e.target.closest('[data-del]')?.dataset.del;
       if (!id || !confirm('确定删除这场对局？')) return;
       store.deleteGame(id);
@@ -377,10 +544,11 @@ function renderStats(q) {
     <label class="field">选择玩家<select data-f="p">${playerOptions(me, '全部玩家')}</select></label>
   </div>`;
 
-  const s = me && playerStats(games).find((x) => x.name === me);
+  const allStats = playerStats(games, store.chipDays);
+  const s = me && allStats.find((x) => x.name === me);
   if (!games.length) html += '<div class="card empty">还没有记录。</div>';
   else if (!s) {
-    const rows = playerStats(games).sort((a, b) => b.pt - a.pt);
+    const rows = allStats.sort((a, b) => b.pt - a.pt);
     html += `
     <div class="card"><h3>排行榜</h3>
       <div class="table-scroll"><table>
@@ -435,6 +603,7 @@ function renderSettings() {
   const cfg = store.githubConfig();
   const token = store.getToken();
   const apiKey = store.getApiKey();
+  const geminiModel = store.getSettings().geminiModel || DEFAULT_GEMINI_MODEL;
   view.innerHTML = `
   <div class="card">
     <h2>计分规则</h2>
@@ -448,9 +617,19 @@ function renderSettings() {
     <button class="primary" data-act="save-rules">保存规则</button>
   </div>
   <div class="card">
-    <h2>照片识别（Claude）</h2>
-    <p class="muted small">在 <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> 创建 API Key（按量付费，识别一张约几分钱）。Key 只保存在当前浏览器，图片从浏览器直接发给 Anthropic。</p>
-    <label class="field">Anthropic API Key<input type="password" id="api-key" value="${esc(apiKey)}" placeholder="sk-ant-…" autocomplete="off"></label>
+    <h2>照片识别（Gemini）</h2>
+    <p class="muted small">在 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 创建 API Key，并为该项目开通 <b>Billing</b>（付费层级，按量计费，识别一张不到一分钱；付费层级的数据不会被用于训练模型）。Key 只保存在当前浏览器，图片从浏览器直接发给 Google。</p>
+    <details><summary>如何开通 Billing？</summary>
+      <ol class="small muted">
+        <li>打开 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>，点 <b>Create API key</b></li>
+        <li>在 Key 所在项目的一行点 <b>Set up billing</b>，按提示绑定 Google Cloud 结算账号（需要信用卡）</li>
+        <li>开通后该项目显示为 Paid tier（Tier 1），把 Key 复制到下方保存</li>
+      </ol>
+    </details>
+    <div class="grid-2" style="margin-top:10px">
+      <label class="field">Gemini API Key<input type="password" id="api-key" value="${esc(apiKey)}" placeholder="AIza…" autocomplete="off"></label>
+      <label class="field">模型<input id="gemini-model" value="${esc(geminiModel)}" placeholder="${DEFAULT_GEMINI_MODEL}" autocomplete="off"></label>
+    </div>
     <div class="row" style="margin-top:10px"><button class="primary" data-act="save-key">保存</button>
       <button class="ghost danger" data-act="clear-key" ${apiKey ? '' : 'disabled'}>清除</button></div>
   </div>
@@ -504,7 +683,11 @@ function renderSettings() {
         if ([nr.start, nr.returnPts, ...nr.uma].some((v) => Number.isNaN(v))) return toast('请输入数字', 'error');
         const s = store.getSettings(); s.rules = nr; store.setSettings(s);
         toast('规则已保存'); renderSettings();
-      } else if (act === 'save-key') { store.setApiKey($('#api-key').value.trim()); toast('已保存'); renderSettings(); }
+      } else if (act === 'save-key') {
+        store.setApiKey($('#api-key').value.trim());
+        const s = store.getSettings(); s.geminiModel = $('#gemini-model').value.trim() || DEFAULT_GEMINI_MODEL; store.setSettings(s);
+        toast('已保存'); renderSettings();
+      }
       else if (act === 'clear-key') { store.setApiKey(''); toast('已清除'); renderSettings(); }
       else if (act === 'save-gh') { saveGh(); toast('已保存'); }
       else if (act === 'test-gh') { saveGh(); try { toast(`连接成功：${await store.testGithub()}`); } catch (err) { toast(err.message, 'error'); } }
@@ -518,9 +701,15 @@ function renderSettings() {
       if (!file) return;
       try {
         const text = await file.text();
-        const list = file.name.toLowerCase().endsWith('.csv') ? importCSV(text) : (() => { const j = JSON.parse(text); return Array.isArray(j) ? j : j.games || []; })();
-        const k = store.importGames(list);
-        toast(`导入 ${k} 场`);
+        let list, chipList = [];
+        if (file.name.toLowerCase().endsWith('.csv')) list = importCSV(text);
+        else {
+          const j = JSON.parse(text);
+          list = Array.isArray(j) ? j : j.games || [];
+          chipList = Array.isArray(j) ? [] : j.chips || [];
+        }
+        const k = store.importGames(list, chipList);
+        toast(`导入 ${k} 条记录`);
         if (k) afterDataChange();
       } catch (err) { toast(`导入失败：${err.message}`, 'error'); }
     },

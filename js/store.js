@@ -1,11 +1,15 @@
 // 数据存储：本地缓存 + 站点 data/games.json + GitHub API 同步
 
 const LS = {
-  db: 'mj.db',          // {games, pending:[id], deleted:[id]}
+  db: 'mj.db',          // {games, chipDays, pending:[id], deleted:[id]}
   settings: 'mj.settings',
   token: 'mj.token',
-  apiKey: 'mj.apikey',
+  geminiKey: 'mj.geminiKey',
+  oldAnthropicKey: 'mj.apikey', // 旧版本的 Anthropic Key，启动时清除
 };
+
+/** 每天一条 chips 记录，id 由日期决定，保证同一天只有一条 */
+export const chipDayId = (date) => `chips-${date}`;
 
 function lsGet(key, fallback) {
   try {
@@ -22,12 +26,14 @@ function lsSet(key, val) {
 
 export const store = {
   games: [],
+  chipDays: [], // [{id, date, players:[], chips:[], updatedAt}]
   pending: new Set(),
   deleted: new Set(),
   remoteLoaded: false,
 
   async init() {
-    const local = lsGet(LS.db, { games: [], pending: [], deleted: [] });
+    lsSet(LS.oldAnthropicKey, null);
+    const local = lsGet(LS.db, { games: [], chipDays: [], pending: [], deleted: [] });
     this.pending = new Set(local.pending || []);
     this.deleted = new Set(local.deleted || []);
     let remote = null;
@@ -38,14 +44,16 @@ export const store = {
     if (remote) {
       this.remoteLoaded = true;
       this.games = mergeGames(remote.games || [], local.games || [], this.pending, this.deleted);
+      this.chipDays = mergeGames(remote.chips || [], local.chipDays || [], this.pending, this.deleted);
     } else {
       this.games = local.games || [];
+      this.chipDays = local.chipDays || [];
     }
     this.persist();
   },
 
   persist() {
-    lsSet(LS.db, { games: this.games, pending: [...this.pending], deleted: [...this.deleted] });
+    lsSet(LS.db, { games: this.games, chipDays: this.chipDays, pending: [...this.pending], deleted: [...this.deleted] });
   },
 
   get dirtyCount() { return this.pending.size + this.deleted.size; },
@@ -68,12 +76,40 @@ export const store = {
     this.persist();
   },
 
-  importGames(list) {
+  getChipDay(date) { return this.chipDays.find((d) => d.date === date); },
+
+  saveChipDay(rec) {
+    rec.id = chipDayId(rec.date);
+    rec.updatedAt = new Date().toISOString();
+    this.chipDays = this.chipDays.filter((d) => d.id !== rec.id).concat(rec);
+    this.pending.add(rec.id);
+    this.deleted.delete(rec.id);
+    this.persist();
+  },
+
+  deleteChipDay(date) {
+    const id = chipDayId(date);
+    this.chipDays = this.chipDays.filter((d) => d.id !== id);
+    this.pending.delete(id);
+    this.deleted.add(id);
+    this.persist();
+  },
+
+  /** 返回导入的条数（对局 + chips 记录） */
+  importGames(list, chipList = []) {
     let n = 0;
     for (const g of list) {
       if (!g || !g.id || g.players?.length !== 4 || g.scores?.length !== 4) continue;
       const cur = this.getGame(g.id);
       if (!cur || (g.updatedAt || '') > (cur.updatedAt || '')) { this.saveGame({ ...g }); n++; }
+    }
+    for (const d of chipList) {
+      if (!d || !d.date || !Array.isArray(d.players) || !Array.isArray(d.chips)) continue;
+      const cur = this.getChipDay(d.date);
+      if (!cur || (d.updatedAt || '') > (cur.updatedAt || '')) {
+        this.saveChipDay({ ...d });
+        n++;
+      }
     }
     return n;
   },
@@ -85,19 +121,21 @@ export const store = {
   players() {
     const s = new Set();
     this.games.forEach((g) => g.players.forEach((p) => s.add(p)));
+    this.chipDays.forEach((d) => d.players.forEach((p) => s.add(p)));
     return [...s].sort();
   },
-
 
   getSettings() { return lsGet(LS.settings, {}); },
   setSettings(s) { lsSet(LS.settings, s); },
   getToken() { return lsGet(LS.token, ''); },
   setToken(t) { lsSet(LS.token, t || null); },
-  getApiKey() { return lsGet(LS.apiKey, ''); },
-  setApiKey(k) { lsSet(LS.apiKey, k || null); },
+  getApiKey() { return lsGet(LS.geminiKey, ''); },
+  setApiKey(k) { lsSet(LS.geminiKey, k || null); },
+
+  sortedChipDays() { return this.chipDays.slice().sort((a, b) => a.date.localeCompare(b.date)); },
 
   exportJSON() {
-    return JSON.stringify({ version: 1, games: this.sortedGames() }, null, 2);
+    return JSON.stringify({ version: 1, games: this.sortedGames(), chips: this.sortedChipDays() }, null, 2);
   },
 
   // ---------- GitHub 同步 ----------
@@ -125,10 +163,13 @@ export const store = {
       const { data, sha } = await ghRead(cfg, token);
       const merged = mergeGames(data.games || [], this.games, this.pending, this.deleted);
       merged.sort((a, b) => (a.date + (a.createdAt || '')).localeCompare(b.date + (b.createdAt || '')));
-      const body = JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), games: merged }, null, 2) + '\n';
+      const chips = mergeGames(data.chips || [], this.chipDays, this.pending, this.deleted);
+      chips.sort((a, b) => a.date.localeCompare(b.date));
+      const body = JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), games: merged, chips }, null, 2) + '\n';
       const ok = await ghWrite(cfg, token, body, sha, `更新麻将记录（${merged.length} 场）`);
       if (ok) {
         this.games = merged;
+        this.chipDays = chips;
         this.pending.clear();
         this.deleted.clear();
         this.persist();
