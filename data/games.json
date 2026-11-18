@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-18T13:47:56.688Z",
+  "updatedAt": "2026-11-18T13:48:21.352Z",
   "games": [
     {
       "id": "gmwm6eyaz2hbo",
@@ -175,6 +175,35 @@
       ],
       "note": "",
       "updatedAt": "2026-11-18T13:47:56.077Z"
+    },
+    {
+      "id": "gmwm6fh8aaobe",
+      "date": "2026-09-23",
+      "createdAt": "2026-11-18T13:48:20.602Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "团",
+        "鱼",
+        "akiha",
+        "豆"
+      ],
+      "scores": [
+        -900,
+        27700,
+        31400,
+        41800
+      ],
+      "note": "",
+      "updatedAt": "2026-11-18T13:48:20.602Z"
     },
     {
       "id": "gmwm67uqujlm4",
