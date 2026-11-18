@@ -67,3 +67,21 @@ console.log('all tests passed');
   assert.ok(raw.totals.every((t) => t.ok));
 }
 console.log('verify tests passed');
+
+// 识别结果 → 对局；批量改名
+{
+  const { recognizedToGame, renameRecognized } = await import('../js/scoring.js');
+  const P = (names, vals) => names.map((name, i) => ({ name, value: vals[i] }));
+  assert.deepEqual(recognizedToGame({ kind: 'pt', players: P(['A', 'B', 'C', 'D'], [60, 10, -25, -45]) }, R),
+    { players: ['A', 'B', 'C', 'D'], scores: [50000, 30000, 15000, 5000] });
+  assert.deepEqual(recognizedToGame({ kind: 'score', players: P(['A', 'B', 'C', 'D'], [50000, 30000, 15000, 5000]) }, R).scores, [50000, 30000, 15000, 5000]);
+  assert.equal(recognizedToGame({ kind: 'pt', players: P(['A', 'B', 'C', 'D'], [60, 10, -25, -44]) }, R).error, '马点合计不为 0');
+  assert.equal(recognizedToGame({ kind: 'score', players: P(['A', 'A', 'C', 'D'], [50000, 30000, 15000, 5000]) }, R).error, '玩家名重复');
+  assert.equal(recognizedToGame({ kind: 'score', players: P(['A', 'B', 'C'], [50000, 30000, 20000]) }, R).error, '只有 3 人');
+  const res = { games: [{ kind: 'pt', players: P(['小明', '小江', 'C', 'D'], [1, 2, 3, -6]) }], chips: [{ name: '小江', count: 2 }], totals: P(['小江'], [2]), money: [] };
+  const rn = renameRecognized(res, { 小江: '小红', 小明: '' });
+  assert.deepEqual(rn.games[0].players.map((p) => p.name), ['小明', '小红', 'C', 'D']);
+  assert.equal(rn.chips[0].name, '小红'); assert.equal(rn.totals[0].name, '小红');
+  assert.equal(res.chips[0].name, '小江'); // 不修改原对象
+}
+console.log('recognize helpers tests passed');

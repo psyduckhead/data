@@ -150,6 +150,15 @@ details summary { cursor: pointer; color: var(--text-2); font-size: 14px; margin
 .recog.warn { border-color: var(--neg); }
 .recog .bad, .verify .bad, p.bad { color: var(--neg); }
 .verify .ok, p.ok { color: var(--pos); }
+.rename { margin-bottom: 10px; }
+.rename summary { cursor: pointer; }
+.rename-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 16px; margin-top: 6px; }
+.rename-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 110px; gap: 6px; align-items: center; font-size: 14px; }
+.rename-row .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.save-all { margin: 6px 0 8px; }
+.save-all label { display: inline-flex; align-items: center; gap: 4px; }
+.save-all input[type=checkbox] { width: auto; }
+.recog .ok { color: var(--pos); }
 .verify { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
 .tag { background: var(--surface-2); border-radius: 6px; padding: 1px 8px; font-size: 12px; color: var(--text-2); }
 

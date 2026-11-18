@@ -105,3 +105,34 @@ export function verifyRecognized(res, rules) {
   });
   return { games, totals, allOk: games.every((g) => g.ok) && totals.every((t) => t.ok) };
 }
+
+/** 把识别出的一场转换成可保存的 {players, scores}；不合格时返回 {error} */
+export function recognizedToGame(g, rules) {
+  const players = (g.players || []).map((p) => String(p.name || '').trim());
+  if (players.length !== 4) return { error: `只有 ${players.length} 人` };
+  if (players.some((p) => !p)) return { error: '有玩家名为空' };
+  if (new Set(players).size !== 4) return { error: '玩家名重复' };
+  const vals = g.players.map((p) => Number(p.value));
+  if (vals.some((v) => !Number.isFinite(v))) return { error: '有数值无法识别' };
+  if (g.kind === 'pt' && round1(vals.reduce((a, v) => a + v, 0)) !== 0) return { error: '马点合计不为 0' };
+  const scores = g.kind === 'pt' ? ptsToScores(vals, rules) : vals;
+  const diff = scores.reduce((a, v) => a + v, 0) - totalOf(rules);
+  if (diff !== 0) return { error: `合计差 ${diff > 0 ? '+' : ''}${diff}` };
+  return { players, scores };
+}
+
+/** 按 {旧名: 新名} 批量改名识别结果（场次、chips、合计、钱数），返回新对象 */
+export function renameRecognized(res, map) {
+  const fix = (name) => {
+    const k = String(name ?? '').trim();
+    return map[k] !== undefined && map[k].trim() ? map[k].trim() : name;
+  };
+  const list = (arr) => (arr || []).map((x) => ({ ...x, name: fix(x.name) }));
+  return {
+    ...res,
+    games: (res.games || []).map((g) => ({ ...g, players: list(g.players) })),
+    chips: list(res.chips),
+    totals: list(res.totals),
+    money: list(res.money),
+  };
+}

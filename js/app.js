@@ -1,4 +1,4 @@
-import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized } from './scoring.js';
+import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js';
 import { store } from './store.js';
 import { DEFAULT_GEMINI_MODEL } from './recognize.js';
 
@@ -112,7 +112,7 @@ window.addEventListener('hashchange', () => { window.scrollTo(0, 0); route(); })
 
 // ========== 录入 ==========
 let form = null;
-let photo = null; // {url, file, loading, error, result, used:Set}
+let photo = null; // {url, file, loading, error, result, used:Set, saved:Set, saveChips, names:[]}
 let chipForm = null; // 当日 chips：{date, values:{name: string}, extra:[name]}
 
 function blankForm() {
@@ -238,6 +238,8 @@ function renderAdd(q) {
         $('#chip-card').scrollIntoView({ block: 'start', behavior: 'smooth' });
         return toast(`已填入 ${form.date} 的 chips，核对后点「保存 chips」`);
       }
+      if (ds.act === 'apply-rename') return applyRename(q);
+      if (ds.act === 'save-all') return saveAllRecognized(q);
       if (ds.act === 'save-chips') return saveChips();
       if (ds.act === 'delete-chips') {
         if (!confirm(`删除 ${form.date} 的 chips 记录？`)) return;
@@ -261,11 +263,12 @@ function renderAdd(q) {
     },
     change(e) {
       if (e.target.id === 'chip-add') return addChipPlayer();
+      if (e.target.id === 'save-chips-too') { photo.saveChips = e.target.checked; return; }
       if (e.target.id !== 'photo-input') return;
       const file = e.target.files[0];
       if (!file) return;
       if (photo) URL.revokeObjectURL(photo.url);
-      photo = { file, url: URL.createObjectURL(file), used: new Set() };
+      photo = { file, url: URL.createObjectURL(file), used: new Set(), saved: new Set(), saveChips: true };
       renderAdd(q);
       if (store.getApiKey()) runRecognize(q);
     },
@@ -278,17 +281,39 @@ function renderRecognized(res) {
   const fmtVal = (kind, x) => (kind === 'pt' ? fmtPt(x) : fmtScore(x));
   const fmtNum = (x) => (Number.isInteger(x) ? fmtSigned(x) : fmtPt(x));
   const badCount = v.games.filter((g) => !g.ok).length + v.totals.filter((t) => !t.ok).length;
+  // 所有识别到的名字（按出现顺序），用于批量改名
+  const known = new Set(store.players());
+  const names = [];
+  const addName = (n) => { const t = String(n ?? '').trim(); if (t && !names.includes(t)) names.push(t); };
+  [res.chips, ...games.map((g) => g.players), res.totals, res.money].forEach((arr) => (arr || []).forEach((x) => addName(x.name)));
+  photo.names = names;
+  const unknown = names.filter((n) => !known.has(n));
+  const savable = games.filter((g, k) => !photo.saved.has(k) && !recognizedToGame(g, rules()).error).length;
+  const date = form.date || today();
   return `
+    <details class="rename" ${unknown.length && known.size ? 'open' : ''}>
+      <summary class="field-label">玩家名（${names.length} 人${unknown.length && known.size ? `，${unknown.length} 个新名字` : ''}）· 识别错了可以批量改名</summary>
+      <div class="rename-grid">${names.map((n, i) => `
+        <label class="rename-row"><span class="n">${esc(n)}${known.has(n) || !known.size ? '' : ' <span class="tag">新名字</span>'}</span>
+          <span class="muted">→</span><input data-rename="${i}" list="known-players" placeholder="${esc(n)}" autocomplete="off"></label>`).join('')}
+      </div>
+      <button data-act="apply-rename" style="margin-top:6px">应用改名</button>
+      <span class="small muted">留空表示不改；改成同一个名字可以合并</span>
+    </details>
     ${res.chips?.length ? `
       <div class="field-label">chips（第一行名字旁的数字）：</div>
       <button data-act="fill-chips" class="recog">${res.chips.map((c) => `<span>${esc(c.name)} <b class="num">${fmtSigned(c.count)}</b></span>`).join('')}<span class="small muted">点击填入当日 chips</span></button>` : ''}
-    <div class="field-label" style="margin-top:10px">识别到 ${games.length} 场，点击填入上方表单，核对后保存：</div>
+    <div class="field-label" style="margin-top:10px">识别到 ${games.length} 场。可以一次全部保存，也可以点某一场填入上方表单单独修改：</div>
+    <div class="row save-all">
+      <button class="primary" data-act="save-all" ${savable ? '' : 'disabled'}>全部保存（${savable} 场 · ${esc(date)}）</button>
+      ${res.chips?.length ? `<label class="small"><input type="checkbox" id="save-chips-too" ${photo.saveChips ? 'checked' : ''}> 同时保存当日 chips</label>` : ''}
+    </div>
     ${games.map((g, k) => `
-      <button class="recog ${photo.used.has(k) ? 'used' : ''} ${v.games[k].ok ? '' : 'warn'}" data-fill-game="${k}">
+      <button class="recog ${photo.used.has(k) || photo.saved.has(k) ? 'used' : ''} ${v.games[k].ok ? '' : 'warn'}" data-fill-game="${k}" ${photo.saved.has(k) ? 'disabled' : ''}>
         <span class="tag">#${k + 1} ${g.kind === 'pt' ? '马点' : '点数'}</span>
         ${g.players.map((p) => `<span>${esc(p.name || '?')} <b class="num">${fmtVal(g.kind, p.value)}</b></span>`).join('')}
         ${v.games[k].ok ? '' : `<span class="small bad">⚠ ${g.players.length !== 4 ? `只有 ${g.players.length} 人` : `合计差 ${fmtSigned(v.games[k].diff)}`}</span>`}
-        ${photo.used.has(k) ? '<span class="small muted">已填入</span>' : ''}
+        ${photo.saved.has(k) ? '<span class="small ok">✓ 已保存</span>' : photo.used.has(k) ? '<span class="small muted">已填入</span>' : ''}
       </button>`).join('')}
     ${v.totals.length ? `
       <div class="field-label" style="margin-top:10px">合计行验算（照片上的合计 vs 各场累加）：</div>
@@ -302,6 +327,56 @@ function renderRecognized(res) {
     ${res.notes ? `<p class="small muted">识别备注：${esc(res.notes)}</p>` : ''}`;
 }
 
+function applyRename(q) {
+  const map = {};
+  view.querySelectorAll('[data-rename]').forEach((el) => {
+    const v = el.value.trim();
+    if (v) map[photo.names[Number(el.dataset.rename)]] = v;
+  });
+  if (!Object.keys(map).length) return toast('请先填写要改成的名字');
+  photo.result = renameRecognized(photo.result, map);
+  renderAdd(q);
+  toast(`已改名：${Object.entries(map).map(([a, b]) => `${a} → ${b}`).join('，')}`);
+}
+
+/** 把识别出的所有场次（和当日 chips）一次保存 */
+function saveAllRecognized(q) {
+  const r = rules();
+  const res = photo.result;
+  const date = form.date || today();
+  const sameGame = (g, c) => g.date === date && g.players.join('\u0000') === c.players.join('\u0000') && g.scores.join() === c.scores.join();
+  const saved = [], skipped = [];
+  const base = Date.now();
+  let lastPlayers = null;
+  res.games.forEach((g, k) => {
+    if (photo.saved.has(k)) return;
+    const c = recognizedToGame(g, r);
+    if (c.error) return skipped.push(`#${k + 1} ${c.error}`);
+    if (store.games.some((x) => sameGame(x, c))) { photo.saved.add(k); return skipped.push(`#${k + 1} 已存在`); }
+    store.saveGame({ id: uid(), date, createdAt: new Date(base + k).toISOString(), rules: r, players: c.players, scores: c.scores, note: form.note.trim() });
+    photo.saved.add(k);
+    saved.push(k);
+    lastPlayers = c.players;
+  });
+  let chipsMsg = '';
+  if (photo.saveChips && res.chips?.length) {
+    const players = res.chips.map((c) => c.name.trim()).filter(Boolean);
+    const old = store.getChipDay(date);
+    if (new Set(players).size !== players.length) chipsMsg = '，chips 有重复名字未保存';
+    else if (!old || confirm(`${date} 已有 chips 记录，用识别结果覆盖？`)) {
+      store.saveChipDay({ date, players, chips: res.chips.filter((c) => c.name.trim()).map((c) => Math.round(Number(c.count) || 0)) });
+      chipsMsg = '，chips 已保存';
+      chipForm = null;
+    }
+  }
+  if (lastPlayers) { const s = store.getSettings(); s.lastPlayers = lastPlayers; store.setSettings(s); }
+  if (saved.length || chipsMsg.includes('已保存')) afterDataChange();
+  renderAdd(q);
+  const msg = `已保存 ${saved.length} 场（${date}）${chipsMsg}`;
+  if (skipped.length) toast(`${msg}；跳过：${skipped.join('，')}`, 'error');
+  else toast(msg);
+}
+
 async function runRecognize(q) {
   if (!photo || photo.loading) return;
   photo.loading = true;
@@ -309,6 +384,8 @@ async function runRecognize(q) {
   renderAdd(q);
   try {
     const { recognizeSheet } = await import('./recognize.js');
+    photo.saved = new Set();
+    photo.used = new Set();
     photo.result = await recognizeSheet(photo.file, store.getApiKey(), store.players(), store.getSettings().geminiModel);
     if (photo.result.games?.length === 1) { fillFromGame(photo.result.games[0]); photo.used.add(0); }
   } catch (err) {
