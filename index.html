@@ -7,7 +7,7 @@
   <meta name="description" content="立直麻将终局点数与 chips 记录、对局胜率统计">
   <meta name="theme-color" content="#1d6b4f">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='6' y='2' width='20' height='28' rx='4' fill='%23f7f3e8' stroke='%231d6b4f' stroke-width='2'/><circle cx='16' cy='16' r='5' fill='none' stroke='%23c0392b' stroke-width='2.5'/></svg>">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=20261118-3">
 </head>
 <body>
   <header class="topbar">
@@ -23,7 +23,16 @@
     </div>
   </header>
   <main id="view" class="container"><p class="muted">加载中…</p></main>
+  <footer class="app-footer small muted" id="app-version"></footer>
   <div id="toast" class="toast" hidden></div>
-  <script type="module" src="js/app.js"></script>
+  <script>
+    // 脚本加载失败（多为手机缓存了旧版本文件）时给出提示，而不是停在「加载中」
+    window.addEventListener('error', function (e) {
+      var v = document.getElementById('view');
+      if (!v || v.getAttribute('data-ready')) return;
+      v.innerHTML = '<div class="card"><p>页面加载失败，可能是浏览器缓存了旧版本。</p><button class="primary" onclick="location.reload()">刷新页面</button><p class="small muted">' + String(e.message || '') + '</p></div>';
+    }, true);
+  </script>
+  <script type="module" src="js/app.js?v=20261118-3"></script>
 </body>
 </html>

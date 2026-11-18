@@ -1,6 +1,6 @@
-import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js';
-import { store } from './store.js';
-import { DEFAULT_GEMINI_MODEL } from './recognize.js';
+import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=20261118-3';
+import { store } from './store.js?v=20261118-3';
+import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=20261118-3';
 
 // ---------- 工具 ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -18,6 +18,10 @@ const rules = () => ({ ...DEFAULT_RULES, ...(store.getSettings().rules || {}) })
 const rulesText = (r) => `${fmtScore(r.start)} 起 / ${fmtScore(r.returnPts)} 返 / 马 ${r.uma.map(fmtSigned).join(' ')}`;
 
 const view = $('#view');
+
+// 版本号取自 index.html 引用 app.js 时的 ?v=…，和缓存版本号是同一个
+const APP_VERSION = new URL(import.meta.url).searchParams.get('v') || '开发版';
+$('#app-version').textContent = `版本 ${APP_VERSION}`;
 let toastTimer;
 function toast(msg, kind = '') {
   const t = $('#toast');
@@ -383,7 +387,6 @@ async function runRecognize(q) {
   photo.error = null;
   renderAdd(q);
   try {
-    const { recognizeSheet } = await import('./recognize.js');
     photo.saved = new Set();
     photo.used = new Set();
     photo.result = await recognizeSheet(photo.file, store.getApiKey(), store.players(), store.getSettings().geminiModel);
@@ -859,4 +862,4 @@ function importCSV(text) {
 }
 
 // ---------- 启动 ----------
-store.init().then(route);
+store.init().then(() => { view.dataset.ready = '1'; route(); });

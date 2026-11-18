@@ -61,6 +61,14 @@ node test/scoring.test.mjs    # 测试计分逻辑
 
 旧数据里每场自带的 `chips` 仍然会计入统计。
 
+## 发布新版本
+
+`index.html` 和 `js/app.js` 里的脚本、样式地址带有版本号（`?v=…`），防止手机浏览器混用新旧文件导致页面失效。改了 JS 或 CSS 后，发布前把版本号整体换掉：
+
+```bash
+V=$(date +%Y%m%d%H%M) && sed -i '' -E "s/\?v=[0-9-]+/?v=$V/g" index.html js/app.js
+```
+
 ## CSV 导入格式
 
 ```csv
