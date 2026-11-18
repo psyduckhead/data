@@ -25,7 +25,7 @@ function toast(msg, kind = '') {
   t.className = `toast ${kind}`;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), 3000);
+  toastTimer = setTimeout(() => (t.hidden = true), kind === 'error' ? 8000 : 3000);
 }
 function bindView(h = {}) {
   view.onclick = h.click || null;

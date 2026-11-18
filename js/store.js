@@ -184,8 +184,17 @@ export const store = {
     const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}`, { headers: ghHeaders(this.getToken()) });
     if (!res.ok) throw new Error(`无法访问仓库（HTTP ${res.status}）`);
     const info = await res.json();
-    if (info.permissions && !info.permissions.push) throw new Error('Token 没有该仓库的写入权限');
-    return info.full_name;
+    if (info.permissions && !info.permissions.push) throw new Error(`当前账号对 ${info.full_name} 没有写入权限`);
+    // repo 信息里的 permissions 只反映账号权限；创建一个不被引用的 blob 来实际验证 Token 的 Contents 写权限
+    // （不产生提交、不改动任何文件，GitHub 会自动清理）
+    const w = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/git/blobs`, {
+      method: 'POST',
+      headers: ghHeaders(this.getToken()),
+      body: JSON.stringify({ content: 'write-check', encoding: 'utf-8' }),
+    });
+    if (w.status === 401) throw new Error('GitHub Token 无效或已过期');
+    if (!w.ok) throw new Error(writeDeniedMsg(cfg));
+    return `${info.full_name}，可以写入`;
   },
 };
 
@@ -245,11 +254,23 @@ async function ghRead(cfg, token) {
   return { data: text.trim() ? JSON.parse(text) : { games: [] }, sha: meta.sha };
 }
 
+function writeDeniedMsg(cfg) {
+  return `Token 无法写入 ${cfg.owner}/${cfg.repo}（分支 ${cfg.branch}）。请确认：① 用户名/仓库名填写正确；`
+    + `② Fine-grained token 的 Resource owner 是 ${cfg.owner}，且 Repository access 选中了 ${cfg.repo}；`
+    + `③ 如果你是协作者而不是仓库主人，fine-grained token 不能写别人的个人仓库，请改用 Tokens (classic) 并勾选 public_repo`;
+}
+
 async function ghWrite(cfg, token, text, sha, message) {
   const body = { message, content: b64encode(text), branch: cfg.branch };
   if (sha) body.sha = sha;
   const res = await fetch(contentsUrl(cfg), { method: 'PUT', headers: ghHeaders(token), body: JSON.stringify(body) });
   if (res.status === 409 || res.status === 422) return false;
+  if (res.status === 403 || res.status === 404) {
+    const j = await res.json().catch(() => ({}));
+    if (/protected branch|rule/i.test(j.message || '')) throw new Error(`分支 ${cfg.branch} 有保护规则，禁止直接写入：${j.message}`);
+    throw new Error(writeDeniedMsg(cfg));
+  }
+  if (res.status === 401) throw new Error('GitHub Token 无效或已过期，请在「设置」中重新填写');
   if (!res.ok) throw new Error(`写入 GitHub 失败（HTTP ${res.status}）`);
   return true;
 }
