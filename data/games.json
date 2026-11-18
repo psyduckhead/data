@@ -1,7 +1,36 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-18T08:25:56.456Z",
+  "updatedAt": "2026-11-18T10:56:04.627Z",
   "games": [
+    {
+      "id": "gmwm09xjxxl8k",
+      "date": "2026-11-07",
+      "createdAt": "2026-11-18T10:56:04.125Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "vc",
+        "koko",
+        "yuri",
+        "豆"
+      ],
+      "scores": [
+        28300,
+        2100,
+        45700,
+        23900
+      ],
+      "note": "",
+      "updatedAt": "2026-11-18T10:56:04.125Z"
+    },
     {
       "id": "gmwludd0ky82r",
       "date": "2026-11-17",
