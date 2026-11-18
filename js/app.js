@@ -1,6 +1,6 @@
-import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=202611182137';
-import { store } from './store.js?v=202611182137';
-import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=202611182137';
+import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=202611182304';
+import { store } from './store.js?v=202611182304';
+import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=202611182304';
 
 // ---------- 工具 ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -548,6 +548,7 @@ function saveChips() {
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const weekday = (date) => WEEKDAYS[new Date(`${date}T00:00:00`).getDay()];
 const openDays = new Set(); // 展开了小局的日期
+let movingDay = null;        // 正在改日期的那一天
 
 /** 月历：标出打过的日子；选了玩家时按当天输赢着色 */
 function calendarHtml(month, days, selected, me) {
@@ -609,8 +610,16 @@ function dayCard(date, games, chipDay, me, open) {
       ${notes.map((n) => `<span class="small muted">${esc(n)}</span>`).join('')}
       ${pending ? '<span class="tag">未同步</span>' : ''}
       <span class="spacer"></span>
+      <button class="link small" data-move-day="${date}">改日期</button>
       <a href="#/add?date=${encodeURIComponent(date)}" class="small">＋录入</a>
     </div>
+    ${movingDay === date ? `
+    <div class="move-day">
+      <span class="small">把这天的全部小局${chipDay ? '和当日 chips' : ''}移到：</span>
+      <input type="date" id="move-to" value="${date}">
+      <button class="primary small" data-move-go="${date}">移动</button>
+      <button class="ghost small" data-move-cancel>取消</button>
+    </div>` : ''}
     <div class="ds-list">${stats.map((s) => `
       <div class="ds${s.name === me ? ' me' : ''}">
         <span class="n">${esc(s.name)}</span>
@@ -631,6 +640,27 @@ function dayCard(date, games, chipDay, me, open) {
       </div>` : ''}
     </details>` : ''}
   </div>`;
+}
+
+function moveDayTo(from, to, q, go) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(to || '')) return toast('请选择新的日期', 'error');
+  if (to === from) return toast('新日期和原日期相同', 'error');
+  const n = store.games.filter((g) => g.date === from).length;
+  const targetGames = store.games.filter((g) => g.date === to).length;
+  const chips = store.getChipDay(from), targetChips = store.getChipDay(to);
+  let msg = `把 ${from} 的 ${n} 场${chips ? '和当日 chips ' : ''}移到 ${to}？`;
+  if (targetGames) msg += `\n${to} 已有 ${targetGames} 场，会合并到同一天。`;
+  if (chips && targetChips) msg += `\n两天都有 chips，会按玩家相加。`;
+  if (!confirm(msg)) return;
+  const moved = store.moveDay(from, to);
+  movingDay = null;
+  if (openDays.delete(from)) openDays.add(to);
+  afterDataChange();
+  toast(`已把 ${moved} 场${chips ? '和 chips ' : ''}移到 ${to}`);
+  // 正在只看原来那天时，跟着跳到新日期；否则跳到新日期所在的月份
+  if (q.d === from) go({ d: to, m: to.slice(0, 7) });
+  else if (q.m && q.m !== to.slice(0, 7)) go({ m: to.slice(0, 7) });
+  else renderList(q);
 }
 
 function renderList(q) {
@@ -683,6 +713,11 @@ function renderList(q) {
         if (d.open) openDays.delete(d.dataset.day); else openDays.add(d.dataset.day);
         return;
       }
+      const moveDay = t.closest('[data-move-day]')?.dataset.moveDay;
+      if (moveDay) { movingDay = movingDay === moveDay ? null : moveDay; renderList(q); $('#move-to')?.focus(); return; }
+      if (t.closest('[data-move-cancel]')) { movingDay = null; return renderList(q); }
+      const moveFrom = t.closest('[data-move-go]')?.dataset.moveGo;
+      if (moveFrom) return moveDayTo(moveFrom, $('#move-to').value, q, go);
       const calDay = t.closest('[data-cal-day]')?.dataset.calDay;
       if (calDay) return go({ d: calDay === sel ? '' : calDay, m: calDay.slice(0, 7) });
       const calMonth = t.closest('[data-cal-month]')?.dataset.calMonth;

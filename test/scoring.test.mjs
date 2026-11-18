@@ -85,3 +85,12 @@ console.log('verify tests passed');
   assert.equal(res.chips[0].name, '小江'); // 不修改原对象
 }
 console.log('recognize helpers tests passed');
+
+// 合并当日 chips（移动日期时用）
+{
+  const { mergeChipDays } = await import('../js/store.js');
+  assert.deepEqual(mergeChipDays({ players: ['A', 'B'], chips: [3, -3] }, { players: ['B', 'C'], chips: [2, -2] }),
+    { players: ['A', 'B', 'C'], chips: [3, -1, -2] });
+  assert.deepEqual(mergeChipDays(undefined, { players: ['A'], chips: [1] }), { players: ['A'], chips: [1] });
+}
+console.log('chip merge tests passed');

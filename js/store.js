@@ -95,6 +95,20 @@ export const store = {
     this.persist();
   },
 
+  /** 把某天的所有对局和当日 chips 移到另一天；目标日已有 chips 时按玩家相加。返回移动的场数 */
+  moveDay(from, to) {
+    if (!from || !to || from === to) return 0;
+    const games = this.games.filter((g) => g.date === from);
+    games.forEach((g) => this.saveGame({ ...g, date: to }));
+    const src = this.getChipDay(from);
+    if (src) {
+      const merged = mergeChipDays(this.getChipDay(to), src);
+      this.deleteChipDay(from);
+      this.saveChipDay({ date: to, ...merged });
+    }
+    return games.length;
+  },
+
   /** 返回导入的条数（对局 + chips 记录） */
   importGames(list, chipList = []) {
     let n = 0;
@@ -197,6 +211,19 @@ export const store = {
     return `${info.full_name}，可以写入`;
   },
 };
+
+/** 合并两条当日 chips 记录（按玩家相加），返回 {players, chips} */
+export function mergeChipDays(a, b) {
+  const players = [], chips = [];
+  for (const rec of [a, b]) {
+    rec?.players.forEach((name, i) => {
+      const k = players.indexOf(name);
+      if (k >= 0) chips[k] += rec.chips[i] || 0;
+      else { players.push(name); chips.push(rec.chips[i] || 0); }
+    });
+  }
+  return { players, chips };
+}
 
 /** 以远端为基础，叠加本地待同步修改与删除 */
 export function mergeGames(remoteGames, localGames, pending, deleted) {

@@ -190,6 +190,9 @@ details summary { cursor: pointer; color: var(--text-2); font-size: 14px; margin
 .ds.me { background: var(--accent-soft); }
 .ds .n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds b, .ds .rk, .ds .c { text-align: right; }
+.move-day { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 2px 0 8px; padding: 8px; border-radius: 8px; background: var(--surface-2); }
+.move-day input { width: auto; padding: 4px 8px; }
+.move-day button { padding: 4px 12px; }
 .day details { margin-top: 6px; border-top: 1px solid var(--grid); padding-top: 4px; }
 .day summary { cursor: pointer; color: var(--text-2); padding: 4px 0; }
 /* 小局：每场一行 */
