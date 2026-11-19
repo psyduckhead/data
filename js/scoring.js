@@ -36,7 +36,7 @@ export function gameResult(g) {
 /** chipDays: 每天一条 chips 记录 [{date, players:[], chips:[]}]；旧数据里每场的 chips 也会计入 */
 export function playerStats(games, chipDays = []) {
   const map = new Map();
-  const get = (name) => map.get(name) || map.set(name, { name, games: 0, pt: 0, rankCount: [0, 0, 0, 0], chips: 0 }).get(name);
+  const get = (name) => map.get(name) || map.set(name, { name, games: 0, pt: 0, rankCount: [0, 0, 0, 0], chips: 0, maxScore: -Infinity, maxScoreDate: '' }).get(name);
   for (const g of games) {
     for (const r of gameResult(g)) {
       const s = get(r.name);
@@ -44,6 +44,7 @@ export function playerStats(games, chipDays = []) {
       s.pt = round1(s.pt + r.pt);
       s.rankCount[r.rank - 1]++;
       s.chips += r.chips;
+      if (r.score > s.maxScore) { s.maxScore = r.score; s.maxScoreDate = g.date; }
     }
   }
   for (const d of chipDays) {
@@ -53,6 +54,9 @@ export function playerStats(games, chipDays = []) {
     ...s,
     avgPt: s.pt / s.games,
     avgRank: s.rankCount.reduce((a, c, i) => a + c * (i + 1), 0) / s.games,
+    tops: s.rankCount[0],
+    topRate: s.rankCount[0] / s.games,
+    avoid4Rate: 1 - s.rankCount[3] / s.games,
   }));
 }
 

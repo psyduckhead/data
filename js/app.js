@@ -1,6 +1,6 @@
-import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=202611182304';
-import { store } from './store.js?v=202611182304';
-import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=202611182304';
+import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=202611191835';
+import { store } from './store.js?v=202611191835';
+import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=202611191835';
 
 // ---------- 工具 ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -101,15 +101,16 @@ $('#sync-badge').onclick = () => (store.canSync() ? doSync() : (location.hash = 
 // ---------- 路由 ----------
 function parseHash() {
   const [path, qs = ''] = location.hash.replace(/^#\/?/, '').split('?');
-  return { page: path || 'add', q: Object.fromEntries(new URLSearchParams(qs)) };
+  return { page: path || 'stats', q: Object.fromEntries(new URLSearchParams(qs)) };
 }
 function route() {
   const { page, q } = parseHash();
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === page));
   if (page === 'list') renderList(q);
-  else if (page === 'stats') renderStats(q);
+  else if (page === 'rank') renderRank(q);
+  else if (page === 'add') renderAdd(q);
   else if (page === 'settings') renderSettings();
-  else renderAdd(q);
+  else renderStats(q); // 默认（及未知地址）显示统计
   updateSyncBadge();
 }
 window.addEventListener('hashchange', () => { window.scrollTo(0, 0); route(); });
@@ -742,6 +743,69 @@ function renderList(q) {
       const f = e.target.dataset.f;
       if (f) go({ [f]: e.target.value });
     },
+  });
+}
+
+// ========== 榜单 ==========
+const PERIODS = [['all', '全部'], ['year', '今年'], ['month', '本月']];
+const MIN_GAMES = [1, 5, 10, 20, 50];
+
+function boardCard(title, hint, rows, fmt, sub, excluded) {
+  return `
+  <div class="card board">
+    <div class="board-head"><h3>${title}</h3><span class="small muted">${hint}</span></div>
+    ${rows.length ? `<ol class="board-list">${rows.map((s, i) => {
+      // 显示的数值相同就并列同一名次
+      let rank = i;
+      while (rank > 0 && fmt(rows[rank - 1]) === fmt(s)) rank--;
+      return `
+      <li class="${rank < 3 ? `m${rank + 1}` : ''}">
+        <span class="b-rank">${rank + 1}</span>
+        <a class="b-name" href="#/stats?p=${encodeURIComponent(s.name)}">${esc(s.name)}</a>
+        <span class="b-sub small muted">${sub(s)}</span>
+        <b class="b-val num">${fmt(s)}</b>
+      </li>`;
+    }).join('')}</ol>` : '<p class="small muted">没有符合条件的玩家。</p>'}
+    ${excluded ? `<p class="small muted" style="margin:6px 0 0">另有 ${excluded} 人场数不足，未上榜</p>` : ''}
+  </div>`;
+}
+
+function renderRank(q) {
+  const period = PERIODS.some(([k]) => k === q.t) ? q.t : 'all';
+  const min = MIN_GAMES.includes(Number(q.min)) ? Number(q.min) : 5;
+  const t = today();
+  const inPeriod = (d) => period === 'all' || (period === 'year' ? d.startsWith(t.slice(0, 4)) : d.startsWith(t.slice(0, 7)));
+  const games = store.sortedGames().filter((g) => inPeriod(g.date));
+  const all = playerStats(games);
+  const qualified = all.filter((s) => s.games >= min);
+  const excluded = all.length - qualified.length;
+  const by = (key, list) => list.slice().sort((a, b) => b[key] - a[key] || b.games - a.games || a.name.localeCompare(b.name));
+
+  let html = `
+  <div class="filters">
+    <div class="seg">${PERIODS.map(([k, label]) => `<button data-t="${k}" class="${k === period ? 'on' : ''}">${label}</button>`).join('')}</div>
+    <label class="field">比率榜最少场数<select data-min>${MIN_GAMES.map((n) => `<option value="${n}" ${n === min ? 'selected' : ''}>${n} 场</option>`).join('')}</select></label>
+    <span class="spacer"></span>
+    <span class="muted small">${games.length} 场 · ${all.length} 人</span>
+  </div>`;
+  if (!games.length) html += '<div class="card empty">这段时间没有对局。</div>';
+  else html += `<div class="boards">
+    ${boardCard('top 率', '1 位次数 ÷ 场数', by('topRate', qualified), (s) => pct(s.topRate), (s) => `${s.tops}/${s.games} 场`, excluded)}
+    ${boardCard('避 4 率', '没拿 4 位的比例', by('avoid4Rate', qualified), (s) => pct(s.avoid4Rate), (s) => `4 位 ${s.rankCount[3]} 次 / ${s.games} 场`, excluded)}
+    ${boardCard('最高分', '单场最高终局点数', all.slice().sort((a, b) => b.maxScore - a.maxScore || a.maxScoreDate.localeCompare(b.maxScoreDate)), (s) => fmtScore(s.maxScore), (s) => esc(s.maxScoreDate), 0)}
+    ${boardCard('top 次数', '拿 1 位的总次数', by('tops', all), (s) => `${s.tops} 次`, (s) => `${s.games} 场 · ${pct(s.topRate)}`, 0)}
+  </div>`;
+  view.innerHTML = html;
+
+  const go = (patch) => {
+    const nq = { ...q, ...patch };
+    if (nq.t === 'all') delete nq.t;
+    if (Number(nq.min) === 5) delete nq.min;
+    location.hash = `#/rank${Object.keys(nq).length ? `?${new URLSearchParams(nq)}` : ''}`;
+  };
+  bindView({
+    click(e) { const k = e.target.closest('[data-t]')?.dataset.t; if (k) go({ t: k }); },
+    change(e) { if (e.target.matches('[data-min]')) go({ min: e.target.value }); },
   });
 }
 

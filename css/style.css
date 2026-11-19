@@ -235,3 +235,19 @@ tr.clickable:hover td { background: var(--surface-2); }
 
 /* 页脚版本号 */
 .app-footer { text-align: center; padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); }
+
+/* 榜单 */
+.boards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.boards .card { margin-bottom: 0; }
+.board-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.board-head h3 { margin: 0; color: var(--text); font-size: 16px; }
+.board-list { list-style: none; margin: 0; padding: 0; }
+.board-list li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto 72px; gap: 8px; align-items: center; padding: 5px 4px; border-bottom: 1px solid var(--grid); font-size: 14px; }
+.board-list li:last-child { border-bottom: 0; }
+.b-rank { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 700; color: var(--text-2); background: var(--surface-2); }
+.b-name { font-weight: 600; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-val { text-align: right; }
+.board-list li.m1 .b-rank { background: var(--r1-mark); color: #fff; }
+.board-list li.m2 .b-rank { background: #a8b0bb; color: #fff; }
+.board-list li.m3 .b-rank { background: #c98a52; color: #fff; }
+.board-list li.m1 { background: var(--r1-bg); border-radius: 8px; }

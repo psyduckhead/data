@@ -7,15 +7,16 @@
   <meta name="description" content="立直麻将终局点数与 chips 记录、对局胜率统计">
   <meta name="theme-color" content="#1d6b4f">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='6' y='2' width='20' height='28' rx='4' fill='%23f7f3e8' stroke='%231d6b4f' stroke-width='2'/><circle cx='16' cy='16' r='5' fill='none' stroke='%23c0392b' stroke-width='2.5'/></svg>">
-  <link rel="stylesheet" href="css/style.css?v=202611182304">
+  <link rel="stylesheet" href="css/style.css?v=202611191835">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="#/add"><span class="brand-tile">中</span>立直麻将记录</a>
+      <a class="brand" href="#/stats"><span class="brand-tile">中</span>立直麻将记录</a>
       <nav class="tabs">
         <a href="#/add" data-tab="add">录入</a>
         <a href="#/list" data-tab="list">记录</a>
+        <a href="#/rank" data-tab="rank">榜单</a>
         <a href="#/stats" data-tab="stats">统计</a>
         <a href="#/settings" data-tab="settings">设置</a>
       </nav>
@@ -33,6 +34,6 @@
       v.innerHTML = '<div class="card"><p>页面加载失败，可能是浏览器缓存了旧版本。</p><button class="primary" onclick="location.reload()">刷新页面</button><p class="small muted">' + String(e.message || '') + '</p></div>';
     }, true);
   </script>
-  <script type="module" src="js/app.js?v=202611182304"></script>
+  <script type="module" src="js/app.js?v=202611191835"></script>
 </body>
 </html>

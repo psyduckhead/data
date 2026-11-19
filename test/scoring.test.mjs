@@ -27,6 +27,11 @@ assert.equal(gameResult(games[0])[0].rank, 1);
 const A = playerStats(games).find((s) => s.name === 'A');
 assert.equal(A.games, 3); assert.equal(A.chips, 3); assert.deepEqual(A.rankCount, [1, 1, 1, 0]);
 assert.equal(A.pt, 60 + 10 - 20);
+// 榜单字段：top 率、避 4 率、最高分、top 次数
+assert.equal(A.tops, 1); assert.equal(A.topRate, 1 / 3); assert.equal(A.avoid4Rate, 1);
+assert.equal(A.maxScore, 50000); assert.equal(A.maxScoreDate, '2026-11-01');
+const Bs = playerStats(games).find((s) => s.name === 'B');
+assert.equal(Bs.tops, 1); assert.ok(Math.abs(Bs.avoid4Rate - 2 / 3) < 1e-9); assert.equal(Bs.maxScore, 40000);
 // 当日 chips 记录与旧的每场 chips 一起计入
 const withDay = Object.fromEntries(playerStats(games, [{ date: '2026-11-01', players: ['A', 'B', 'Z'], chips: [5, -3, -2] }]).map((x) => [x.name, x]));
 assert.equal(withDay.A.chips, 8); assert.equal(withDay.B.chips, -4);
