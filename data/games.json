@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-21T14:12:44.866Z",
+  "updatedAt": "2026-11-21T14:50:41.668Z",
   "games": [
     {
       "id": "gmwm6q29ca86f",
@@ -3249,6 +3249,238 @@
       ],
       "note": "",
       "updatedAt": "2026-11-18T11:14:13.032Z"
+    },
+    {
+      "id": "gmwqiygroar5v",
+      "date": "2026-11-15",
+      "createdAt": "2026-11-21T14:50:06.564Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "vc",
+        "akiha",
+        "m"
+      ],
+      "scores": [
+        16000,
+        41000,
+        16000,
+        27000
+      ],
+      "note": "",
+      "updatedAt": "2026-11-21T14:50:06.565Z"
+    },
+    {
+      "id": "gmwqiygrpx7rp",
+      "date": "2026-11-15",
+      "createdAt": "2026-11-21T14:50:06.565Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "vc",
+        "akiha",
+        "m"
+      ],
+      "scores": [
+        20000,
+        24000,
+        14000,
+        42000
+      ],
+      "note": "",
+      "updatedAt": "2026-11-21T14:50:06.565Z"
+    },
+    {
+      "id": "gmwqiygrqu3a3",
+      "date": "2026-11-15",
+      "createdAt": "2026-11-21T14:50:06.566Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "vc",
+        "akiha",
+        "m"
+      ],
+      "scores": [
+        24000,
+        30000,
+        16000,
+        30000
+      ],
+      "note": "",
+      "updatedAt": "2026-11-21T14:50:06.566Z"
+    },
+    {
+      "id": "gmwqiygrq9ksy",
+      "date": "2026-11-15",
+      "createdAt": "2026-11-21T14:50:06.567Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "vc",
+        "akiha",
+        "m"
+      ],
+      "scores": [
+        44000,
+        10000,
+        56000,
+        -10000
+      ],
+      "note": "",
+      "updatedAt": "2026-11-21T14:50:06.566Z"
+    },
+    {
+      "id": "gmwqiygrqideb",
+      "date": "2026-11-15",
+      "createdAt": "2026-11-21T14:50:06.568Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "vc",
+        "akiha",
+        "m"
+      ],
+      "scores": [
+        15000,
+        29000,
+        25000,
+        31000
+      ],
+      "note": "",
+      "updatedAt": "2026-11-21T14:50:06.566Z"
+    },
+    {
+      "id": "gmwqiygrr8h8b",
+      "date": "2026-11-15",
+      "createdAt": "2026-11-21T14:50:06.569Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "vc",
+        "akiha",
+        "m"
+      ],
+      "scores": [
+        45000,
+        21000,
+        -14000,
+        48000
+      ],
+      "note": "",
+      "updatedAt": "2026-11-21T14:50:06.567Z"
+    },
+    {
+      "id": "gmwqiygrrl46d",
+      "date": "2026-11-15",
+      "createdAt": "2026-11-21T14:50:06.570Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "vc",
+        "akiha",
+        "m"
+      ],
+      "scores": [
+        41000,
+        19000,
+        25000,
+        15000
+      ],
+      "note": "",
+      "updatedAt": "2026-11-21T14:50:06.567Z"
+    },
+    {
+      "id": "gmwqiygrrxqdr",
+      "date": "2026-11-15",
+      "createdAt": "2026-11-21T14:50:06.571Z",
+      "rules": {
+        "start": 25000,
+        "returnPts": 30000,
+        "uma": [
+          20,
+          10,
+          -10,
+          -20
+        ]
+      },
+      "players": [
+        "ML",
+        "vc",
+        "akiha",
+        "m"
+      ],
+      "scores": [
+        42000,
+        0,
+        13000,
+        45000
+      ],
+      "note": "",
+      "updatedAt": "2026-11-21T14:50:06.567Z"
     },
     {
       "id": "gmwludd0ky82r",
