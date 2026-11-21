@@ -31,7 +31,18 @@ assert.equal(A.pt, 60 + 10 - 20);
 assert.equal(A.tops, 1); assert.equal(A.topRate, 1 / 3); assert.equal(A.avoid4Rate, 1);
 assert.equal(A.maxScore, 50000); assert.equal(A.maxScoreDate, '2026-11-01');
 const Bs = playerStats(games).find((s) => s.name === 'B');
-assert.equal(Bs.tops, 1); assert.ok(Math.abs(Bs.avoid4Rate - 2 / 3) < 1e-9); assert.equal(Bs.maxScore, 40000);
+assert.equal(Bs.tops, 1); assert.ok(Math.abs(Bs.avoid4Rate - 2 / 3) < 1e-9);
+// 连对率 = (1 位 + 2 位) / 场数
+assert.equal(A.rentaiRate, 2 / 3); assert.equal(Bs.rentaiRate, 2 / 3);
+// 狗率：只按记了 chips 的场次算。games[0] 自带 chips（A +3）；11-01 另有当日 chips 记录（A +4 → 只计入 A 在当天没有自带 chips 的 2 场）
+{
+  const st = Object.fromEntries(playerStats(games, [{ date: '2026-11-01', players: ['A', 'E'], chips: [4, -4] }]).map((x) => [x.name, x]));
+  assert.equal(st.A.chips, 7); assert.equal(st.A.chipGames, 3); assert.equal(st.A.dogRate, 7 / 3);
+  assert.equal(st.E.chipGames, 1); assert.equal(st.E.dogRate, -4);
+  assert.equal(st.C.chipGames, 1); assert.equal(st.C.dogRate, 0);     // 只有自带 chips 的那一场（0 枚）
+  const noChips = playerStats([G(['A', 'B', 'C', 'D'], [40000, 30000, 20000, 10000])])[0];
+  assert.equal(noChips.dogRate, null);
+} assert.equal(Bs.maxScore, 40000);
 // 当日 chips 记录与旧的每场 chips 一起计入
 const withDay = Object.fromEntries(playerStats(games, [{ date: '2026-11-01', players: ['A', 'B', 'Z'], chips: [5, -3, -2] }]).map((x) => [x.name, x]));
 assert.equal(withDay.A.chips, 8); assert.equal(withDay.B.chips, -4);

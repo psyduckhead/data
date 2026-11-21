@@ -36,11 +36,16 @@ export function gameResult(g) {
 /** chipDays: 每天一条 chips 记录 [{date, players:[], chips:[]}]；旧数据里每场的 chips 也会计入 */
 export function playerStats(games, chipDays = []) {
   const map = new Map();
-  const get = (name) => map.get(name) || map.set(name, { name, games: 0, pt: 0, rankCount: [0, 0, 0, 0], chips: 0, maxScore: -Infinity, maxScoreDate: '' }).get(name);
+  const get = (name) => map.get(name) || map.set(name, { name, games: 0, pt: 0, rankCount: [0, 0, 0, 0], chips: 0, chipGames: 0, maxScore: -Infinity, maxScoreDate: '' }).get(name);
+  // 每人每天「没有自带 chips」的场数，当日 chips 记录据此计入狗率的分母
+  const plainByDay = new Map();
   for (const g of games) {
+    const legacyChips = !!g.chips?.some(Boolean);
     for (const r of gameResult(g)) {
       const s = get(r.name);
       s.games++;
+      if (legacyChips) s.chipGames++;
+      else { const k = `${r.name}\u0000${g.date}`; plainByDay.set(k, (plainByDay.get(k) || 0) + 1); }
       s.pt = round1(s.pt + r.pt);
       s.rankCount[r.rank - 1]++;
       s.chips += r.chips;
@@ -48,7 +53,12 @@ export function playerStats(games, chipDays = []) {
     }
   }
   for (const d of chipDays) {
-    d.players.forEach((name, i) => { if (map.has(name)) map.get(name).chips += d.chips[i] || 0; });
+    d.players.forEach((name, i) => {
+      const s = map.get(name);
+      if (!s) return;
+      s.chips += d.chips[i] || 0;
+      s.chipGames += plainByDay.get(`${name}\u0000${d.date}`) || 0;
+    });
   }
   return [...map.values()].map((s) => ({
     ...s,
@@ -57,6 +67,9 @@ export function playerStats(games, chipDays = []) {
     tops: s.rankCount[0],
     topRate: s.rankCount[0] / s.games,
     avoid4Rate: 1 - s.rankCount[3] / s.games,
+    rentaiRate: (s.rankCount[0] + s.rankCount[1]) / s.games,
+    // 狗率：每个半庄平均 chips，只按记了 chips 的场次算；没有任何 chips 记录时为 null
+    dogRate: s.chipGames ? s.chips / s.chipGames : null,
   }));
 }
 

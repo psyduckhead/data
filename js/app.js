@@ -1,6 +1,6 @@
-import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=202611191835';
-import { store } from './store.js?v=202611191835';
-import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=202611191835';
+import { DEFAULT_RULES, totalOf, ranks, computePts, ptsToScores, gameResult, playerStats, headToHead, round1, verifyRecognized, recognizedToGame, renameRecognized } from './scoring.js?v=202611212319';
+import { store } from './store.js?v=202611212319';
+import { DEFAULT_GEMINI_MODEL, recognizeSheet } from './recognize.js?v=202611212319';
 
 // ---------- 工具 ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -750,24 +750,46 @@ function renderList(q) {
 const PERIODS = [['all', '全部'], ['year', '今年'], ['month', '本月']];
 const MIN_GAMES = [1, 5, 10, 20, 50];
 
-function boardCard(title, hint, rows, fmt, sub, excluded) {
-  return `
-  <div class="card board">
-    <div class="board-head"><h3>${title}</h3><span class="small muted">${hint}</span></div>
-    ${rows.length ? `<ol class="board-list">${rows.map((s, i) => {
-      // 显示的数值相同就并列同一名次
-      let rank = i;
-      while (rank > 0 && fmt(rows[rank - 1]) === fmt(s)) rank--;
-      return `
-      <li class="${rank < 3 ? `m${rank + 1}` : ''}">
+const BOARD_TOP = 5; // 每张榜默认显示的人数，其余折叠
+
+/**
+ * 一张榜。bar(s) 返回 0–1，用于每行下方的比例条；icon 是榜单标题旁的小图标
+ */
+function boardCard({ key, title, hint, icon, rows, fmt, sub, bar, excluded = 0 }) {
+  // 显示的数值相同就并列同一名次
+  const ranks = [];
+  rows.forEach((s, i) => ranks.push(i > 0 && fmt(rows[i - 1]) === fmt(s) ? ranks[i - 1] : i));
+  const row = (s, i) => {
+    const rank = ranks[i];
+    const w = Math.max(0, Math.min(1, bar(s)));
+    return `
+      <li class="b-row${rank < 3 ? ` m${rank + 1}` : ''}">
         <span class="b-rank">${rank + 1}</span>
-        <a class="b-name" href="#/stats?p=${encodeURIComponent(s.name)}">${esc(s.name)}</a>
-        <span class="b-sub small muted">${sub(s)}</span>
+        <a class="b-main" href="#/stats?p=${encodeURIComponent(s.name)}">
+          <span class="b-name">${esc(s.name)}</span>
+          <span class="b-sub">${sub(s)}</span>
+        </a>
         <b class="b-val num">${fmt(s)}</b>
+        <span class="b-bar" aria-hidden="true"><i style="width:${(w * 100).toFixed(1)}%"></i></span>
       </li>`;
-    }).join('')}</ol>` : '<p class="small muted">没有符合条件的玩家。</p>'}
-    ${excluded ? `<p class="small muted" style="margin:6px 0 0">另有 ${excluded} 人场数不足，未上榜</p>` : ''}
-  </div>`;
+  };
+  const top = rows.slice(0, BOARD_TOP), rest = rows.slice(BOARD_TOP);
+  return `
+  <section class="card board b-${key}">
+    <header class="board-head">
+      <span class="b-icon" aria-hidden="true">${icon}</span>
+      <div><h3>${title}</h3><p>${hint}</p></div>
+      <span class="b-count">${rows.length} 人</span>
+    </header>
+    ${rows.length ? `
+    <ol class="board-list">${top.map(row).join('')}</ol>
+    ${rest.length ? `
+    <details class="b-more">
+      <summary><span class="b-more-open">展开其余 ${rest.length} 人</span><span class="b-more-close">收起</span></summary>
+      <ol class="board-list">${rest.map((s, i) => row(s, i + BOARD_TOP)).join('')}</ol>
+    </details>` : ''}` : '<p class="b-empty">没有符合条件的玩家</p>'}
+    ${excluded ? `<p class="b-note">另有 ${excluded} 人场数不足，未上榜</p>` : ''}
+  </section>`;
 }
 
 function renderRank(q) {
@@ -776,10 +798,19 @@ function renderRank(q) {
   const t = today();
   const inPeriod = (d) => period === 'all' || (period === 'year' ? d.startsWith(t.slice(0, 4)) : d.startsWith(t.slice(0, 7)));
   const games = store.sortedGames().filter((g) => inPeriod(g.date));
-  const all = playerStats(games);
+  const chipDays = store.chipDays.filter((d) => inPeriod(d.date));
+  const all = playerStats(games, chipDays);
   const qualified = all.filter((s) => s.games >= min);
   const excluded = all.length - qualified.length;
+  // 狗率：只看有 chips 记录的人，最少场数按记了 chips 的场数算
+  const withChips = all.filter((s) => s.dogRate !== null);
+  const dogQualified = withChips.filter((s) => s.chipGames >= min);
   const by = (key, list) => list.slice().sort((a, b) => b[key] - a[key] || b.games - a.games || a.name.localeCompare(b.name));
+
+  const maxRows = all.slice().sort((a, b) => b.maxScore - a.maxScore || a.maxScoreDate.localeCompare(b.maxScoreDate));
+  const topsRows = by('tops', all);
+  const dogRows = by('dogRate', dogQualified);
+  const dogMax = dogRows[0]?.dogRate ?? 0, dogMin = dogRows.at(-1)?.dogRate ?? 0;
 
   let html = `
   <div class="filters">
@@ -790,10 +821,19 @@ function renderRank(q) {
   </div>`;
   if (!games.length) html += '<div class="card empty">这段时间没有对局。</div>';
   else html += `<div class="boards">
-    ${boardCard('top 率', '1 位次数 ÷ 场数', by('topRate', qualified), (s) => pct(s.topRate), (s) => `${s.tops}/${s.games} 场`, excluded)}
-    ${boardCard('避 4 率', '没拿 4 位的比例', by('avoid4Rate', qualified), (s) => pct(s.avoid4Rate), (s) => `4 位 ${s.rankCount[3]} 次 / ${s.games} 场`, excluded)}
-    ${boardCard('最高分', '单场最高终局点数', all.slice().sort((a, b) => b.maxScore - a.maxScore || a.maxScoreDate.localeCompare(b.maxScoreDate)), (s) => fmtScore(s.maxScore), (s) => esc(s.maxScoreDate), 0)}
-    ${boardCard('top 次数', '拿 1 位的总次数', by('tops', all), (s) => `${s.tops} 次`, (s) => `${s.games} 场 · ${pct(s.topRate)}`, 0)}
+    ${boardCard({ key: 'top', title: 'top 率', hint: '1 位次数 ÷ 场数', icon: '①', rows: by('topRate', qualified), excluded,
+      fmt: (s) => pct(s.topRate), sub: (s) => `${s.tops} / ${s.games} 场`, bar: (s) => s.topRate })}
+    ${boardCard({ key: 'rentai', title: '连对率', hint: '1 位 + 2 位的比例', icon: '②', rows: by('rentaiRate', qualified), excluded,
+      fmt: (s) => pct(s.rentaiRate), sub: (s) => `${s.rankCount[0] + s.rankCount[1]} / ${s.games} 场`, bar: (s) => s.rentaiRate })}
+    ${boardCard({ key: 'avoid', title: '避 4 率', hint: '没拿 4 位的比例', icon: '盾', rows: by('avoid4Rate', qualified), excluded,
+      fmt: (s) => pct(s.avoid4Rate), sub: (s) => `4 位 ${s.rankCount[3]} 次 · ${s.games} 场`, bar: (s) => s.avoid4Rate })}
+    ${boardCard({ key: 'max', title: '最高分', hint: '单场最高终局点数', icon: '高', rows: maxRows,
+      fmt: (s) => fmtScore(s.maxScore), sub: (s) => esc(s.maxScoreDate), bar: (s) => s.maxScore / (maxRows[0]?.maxScore || 1) })}
+    ${boardCard({ key: 'tops', title: 'top 次数', hint: '拿 1 位的总次数', icon: '冠', rows: topsRows,
+      fmt: (s) => `${s.tops} 次`, sub: (s) => `${s.games} 场 · top 率 ${pct(s.topRate)}`, bar: (s) => s.tops / (topsRows[0]?.tops || 1) })}
+    ${boardCard({ key: 'dog', title: '狗率', hint: '每个半庄平均 chips（只算记了 chips 的场次）', icon: '狗', rows: dogRows, excluded: withChips.length - dogQualified.length,
+      fmt: (s) => `${s.dogRate > 0 ? '+' : ''}${s.dogRate.toFixed(2)}`, sub: (s) => `${fmtSigned(s.chips)} 枚 · ${s.chipGames} 场`,
+      bar: (s) => (dogMax === dogMin ? 1 : (s.dogRate - dogMin) / (dogMax - dogMin)) })}
   </div>`;
   view.innerHTML = html;
 
